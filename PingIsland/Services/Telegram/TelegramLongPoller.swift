@@ -1,6 +1,11 @@
 import Foundation
 
-actor TelegramLongPoller {
+protocol TelegramPolling: Sendable {
+    func start(handler: @escaping @Sendable (TelegramUpdate) async -> Void) async
+    func stop() async
+}
+
+actor TelegramLongPoller: TelegramPolling {
     private let client: TelegramUpdatesClient
     private let stateStore: TelegramStateStoring
     private let onInvalidToken: @Sendable () async -> Void
@@ -27,7 +32,7 @@ actor TelegramLongPoller {
         pollingTask != nil
     }
 
-    func start(handler: @escaping @Sendable (TelegramUpdate) async -> Void) {
+    func start(handler: @escaping @Sendable (TelegramUpdate) async -> Void) async {
         guard pollingTask == nil else {
             return
         }
@@ -37,7 +42,7 @@ actor TelegramLongPoller {
         }
     }
 
-    func stop() {
+    func stop() async {
         pollingTask?.cancel()
         pollingTask = nil
     }

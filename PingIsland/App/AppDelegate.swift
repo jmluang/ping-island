@@ -8,6 +8,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let launchConfiguration = AppLaunchConfiguration()
     private let startupSessionMonitor = SessionMonitor()
     private let globalShortcutManager = GlobalShortcutManager.shared
+    private let telegramService = TelegramService.shared
     private var shouldPresentSettingsAfterOnboarding = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -49,6 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // defers the initial Island window.
             startupSessionMonitor.startMonitoring()
             InterventionActionHub.shared.registerDispatcher(startupSessionMonitor)
+            telegramService.start()
         }
 
         if launchFlow.shouldCreateInitialIslandWindow {
@@ -107,6 +109,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         screenObserver = nil
         startupSessionMonitor.stopMonitoring()
+        telegramService.stop()
     }
     private func ensureSingleInstance() -> Bool {
         let bundleID = Bundle.main.bundleIdentifier ?? "com.wudanwu.PingIsland"
