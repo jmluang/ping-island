@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import Ping_Island
 
@@ -44,6 +45,27 @@ final class TelegramServiceLifecycleTests: XCTestCase {
         XCTAssertEqual(startCount, 1)
     }
 
+    func testMasterOnPlusTokenPlusAuthOutboundObserverStarts() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let outboundFactory = FakeTelegramOutboundObserverFactory()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: 7),
+            pollerFactory: { _ in FakeTelegramPolling() },
+            outboundObserverFactory: { token, chatId in
+                outboundFactory.makeObserver(token: token, chatId: chatId)
+            }
+        )
+
+        await service.refresh()
+
+        XCTAssertEqual(outboundFactory.requests.map(\.token), ["123:abc"])
+        XCTAssertEqual(outboundFactory.requests.map(\.chatId), [7])
+        XCTAssertEqual(outboundFactory.observers.first?.startCount, 1)
+    }
+
     func testMasterTogglesOffPollerStops() async {
         let defaults = makeDefaults()
         var settings = TelegramSettings(defaults: defaults)
@@ -65,6 +87,28 @@ final class TelegramServiceLifecycleTests: XCTestCase {
         let poller = await factory.poller(at: 0)
         let stopCount = await poller.stopCount
         XCTAssertEqual(stopCount, 1)
+    }
+
+    func testMasterTogglesOffOutboundObserverStops() async {
+        let defaults = makeDefaults()
+        var settings = TelegramSettings(defaults: defaults)
+        settings.masterEnabled = true
+        let outboundFactory = FakeTelegramOutboundObserverFactory()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: 7),
+            pollerFactory: { _ in FakeTelegramPolling() },
+            outboundObserverFactory: { token, chatId in
+                outboundFactory.makeObserver(token: token, chatId: chatId)
+            }
+        )
+
+        await service.refresh()
+        settings.masterEnabled = false
+        await service.refresh()
+
+        XCTAssertEqual(outboundFactory.observers.first?.stopCount, 1)
     }
 
     func testBeginPairingOpensAuthWindow() async {
@@ -163,6 +207,37 @@ private actor FakeTelegramPolling: TelegramPolling {
 
     func emit(_ update: TelegramUpdate) async {
         await handler?(update)
+    }
+}
+
+@MainActor
+private final class FakeTelegramOutboundObserverFactory {
+    struct Request {
+        let token: String
+        let chatId: Int64
+    }
+
+    private(set) var requests: [Request] = []
+    private(set) var observers: [FakeTelegramOutboundObserver] = []
+
+    func makeObserver(token: String, chatId: Int64) -> TelegramOutboundObserving {
+        requests.append(.init(token: token, chatId: chatId))
+        let observer = FakeTelegramOutboundObserver()
+        observers.append(observer)
+        return observer
+    }
+}
+
+private final class FakeTelegramOutboundObserver: TelegramOutboundObserving {
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+
+    func start(publisher: AnyPublisher<[SessionState], Never>) {
+        startCount += 1
+    }
+
+    func stop() {
+        stopCount += 1
     }
 }
 

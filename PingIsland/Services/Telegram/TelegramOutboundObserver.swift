@@ -3,6 +3,12 @@ import Foundation
 import Security
 
 @MainActor
+protocol TelegramOutboundObserving: AnyObject {
+    func start(publisher: AnyPublisher<[SessionState], Never>)
+    func stop()
+}
+
+@MainActor
 final class TelegramOutboundObserver {
     private let chatId: Int64
     private let client: TelegramMessagingClient
@@ -194,6 +200,8 @@ final class TelegramOutboundObserver {
         let payload: TelegramAttentionPayload
     }
 }
+
+extension TelegramOutboundObserver: TelegramOutboundObserving {}
 
 enum TelegramCallbackTokenGenerator {
     static func makeToken() -> String {

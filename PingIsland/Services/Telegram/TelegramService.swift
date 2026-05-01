@@ -10,9 +10,13 @@ final class TelegramService {
     private let authState: TelegramAuthControlling
     private let notificationCenter: NotificationCenter
     private let pollerFactory: (String) async -> TelegramPolling
+    private let outboundObserverFactory: @MainActor (String, Int64) -> TelegramOutboundObserving
 
     private var poller: TelegramPolling?
     private var pollerToken: String?
+    private var outboundObserver: TelegramOutboundObserving?
+    private var outboundToken: String?
+    private var outboundChatId: Int64?
     private var defaultsObserver: NSObjectProtocol?
 
     init(
@@ -23,7 +27,8 @@ final class TelegramService {
         notificationCenter: NotificationCenter = .default,
         pollerFactory: @escaping (String) async -> TelegramPolling = { token in
             TelegramLongPoller(client: TelegramAPIClient(token: token))
-        }
+        },
+        outboundObserverFactory: @escaping @MainActor (String, Int64) -> TelegramOutboundObserving = TelegramService.makeDefaultOutboundObserver
     ) {
         self.settings = settings
         self.tokenStore = tokenStore
@@ -31,6 +36,7 @@ final class TelegramService {
         self.authState = authState
         self.notificationCenter = notificationCenter
         self.pollerFactory = pollerFactory
+        self.outboundObserverFactory = outboundObserverFactory
     }
 
     func start() {
@@ -62,6 +68,7 @@ final class TelegramService {
         let existingPoller = poller
         poller = nil
         pollerToken = nil
+        stopOutboundObserver()
         Task {
             await existingPoller?.stop()
         }
@@ -70,15 +77,18 @@ final class TelegramService {
     func refresh() async {
         guard settings.masterEnabled,
               let token = loadedToken(),
-              hasAuthorizedChat
+              let chatId = authorizedChatId
         else {
             await stopCurrentPoller()
+            stopOutboundObserver()
             return
         }
 
         if pollerToken != token {
             await stopCurrentPoller()
         }
+
+        ensureOutboundObserver(token: token, chatId: chatId)
 
         guard poller == nil else {
             return
@@ -103,6 +113,29 @@ final class TelegramService {
         await existingPoller?.stop()
     }
 
+    private func ensureOutboundObserver(token: String, chatId: Int64) {
+        if outboundToken != token || outboundChatId != chatId {
+            stopOutboundObserver()
+        }
+
+        guard outboundObserver == nil else {
+            return
+        }
+
+        let observer = outboundObserverFactory(token, chatId)
+        outboundObserver = observer
+        outboundToken = token
+        outboundChatId = chatId
+        observer.start(publisher: SessionStore.shared.sessionsPublisher)
+    }
+
+    private func stopOutboundObserver() {
+        outboundObserver?.stop()
+        outboundObserver = nil
+        outboundToken = nil
+        outboundChatId = nil
+    }
+
     private func loadedToken() -> String? {
         guard let token = try? tokenStore.load()?.trimmingCharacters(in: .whitespacesAndNewlines),
               !token.isEmpty
@@ -113,12 +146,12 @@ final class TelegramService {
         return token
     }
 
-    private var hasAuthorizedChat: Bool {
+    private var authorizedChatId: Int64? {
         guard let state = try? stateStore.load() else {
-            return false
+            return nil
         }
 
-        return state.auth.chatId != nil
+        return state.auth.chatId
     }
 
     private func handle(_ update: TelegramUpdate) async {
@@ -127,5 +160,13 @@ final class TelegramService {
         }
 
         _ = await authState.handleIncomingMessage(from: chatId)
+    }
+
+    private static func makeDefaultOutboundObserver(token: String, chatId: Int64) -> TelegramOutboundObserving {
+        TelegramOutboundObserver(
+            chatId: chatId,
+            client: TelegramAPIClient(token: token),
+            actionHub: InterventionActionHub.shared
+        )
     }
 }
