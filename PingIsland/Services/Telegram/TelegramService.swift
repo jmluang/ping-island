@@ -11,9 +11,12 @@ final class TelegramService {
     private let notificationCenter: NotificationCenter
     private let pollerFactory: (String) async -> TelegramPolling
     private let outboundObserverFactory: @MainActor (String, Int64) -> TelegramOutboundObserving
+    private let inboundDispatcherFactory: @MainActor (String, TelegramStateStoring) -> TelegramInboundDispatching
 
     private var poller: TelegramPolling?
     private var pollerToken: String?
+    private var inboundDispatcher: TelegramInboundDispatching?
+    private var inboundToken: String?
     private var outboundObserver: TelegramOutboundObserving?
     private var outboundToken: String?
     private var outboundChatId: Int64?
@@ -28,7 +31,8 @@ final class TelegramService {
         pollerFactory: @escaping (String) async -> TelegramPolling = { token in
             TelegramLongPoller(client: TelegramAPIClient(token: token))
         },
-        outboundObserverFactory: @escaping @MainActor (String, Int64) -> TelegramOutboundObserving = TelegramService.makeDefaultOutboundObserver
+        outboundObserverFactory: @escaping @MainActor (String, Int64) -> TelegramOutboundObserving = TelegramService.makeDefaultOutboundObserver,
+        inboundDispatcherFactory: @escaping @MainActor (String, TelegramStateStoring) -> TelegramInboundDispatching = TelegramService.makeDefaultInboundDispatcher
     ) {
         self.settings = settings
         self.tokenStore = tokenStore
@@ -37,6 +41,7 @@ final class TelegramService {
         self.notificationCenter = notificationCenter
         self.pollerFactory = pollerFactory
         self.outboundObserverFactory = outboundObserverFactory
+        self.inboundDispatcherFactory = inboundDispatcherFactory
     }
 
     func start() {
@@ -68,6 +73,8 @@ final class TelegramService {
         let existingPoller = poller
         poller = nil
         pollerToken = nil
+        inboundDispatcher = nil
+        inboundToken = nil
         stopOutboundObserver()
         Task {
             await existingPoller?.stop()
@@ -88,6 +95,7 @@ final class TelegramService {
             await stopCurrentPoller()
         }
 
+        ensureInboundDispatcher(token: token)
         ensureOutboundObserver(token: token, chatId: chatId)
 
         guard poller == nil else {
@@ -110,7 +118,23 @@ final class TelegramService {
         let existingPoller = poller
         poller = nil
         pollerToken = nil
+        inboundDispatcher = nil
+        inboundToken = nil
         await existingPoller?.stop()
+    }
+
+    private func ensureInboundDispatcher(token: String) {
+        if inboundToken != token {
+            inboundDispatcher = nil
+            inboundToken = nil
+        }
+
+        guard inboundDispatcher == nil else {
+            return
+        }
+
+        inboundDispatcher = inboundDispatcherFactory(token, stateStore)
+        inboundToken = token
     }
 
     private func ensureOutboundObserver(token: String, chatId: Int64) {
@@ -155,6 +179,11 @@ final class TelegramService {
     }
 
     private func handle(_ update: TelegramUpdate) async {
+        if update.callbackQuery != nil {
+            await inboundDispatcher?.handle(update)
+            return
+        }
+
         guard let chatId = update.message?.chat?.id else {
             return
         }
@@ -167,6 +196,17 @@ final class TelegramService {
             chatId: chatId,
             client: TelegramAPIClient(token: token),
             actionHub: InterventionActionHub.shared
+        )
+    }
+
+    private static func makeDefaultInboundDispatcher(
+        token: String,
+        stateStore: TelegramStateStoring
+    ) -> TelegramInboundDispatching {
+        TelegramInboundDispatcher(
+            stateStore: stateStore,
+            callbackRegistry: TelegramCallbackRegistry(stateStore: stateStore),
+            client: TelegramAPIClient(token: token)
         )
     }
 }

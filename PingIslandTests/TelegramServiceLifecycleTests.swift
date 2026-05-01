@@ -157,6 +157,49 @@ final class TelegramServiceLifecycleTests: XCTestCase {
         XCTAssertEqual(handledChatIds, [7])
     }
 
+    func testInboundCallbackDelegatesToDispatcher() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let authState = FakeTelegramServiceAuthState()
+        let factory = FakeTelegramPollerFactory()
+        let inboundFactory = FakeTelegramInboundDispatcherFactory()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: 7),
+            authState: authState,
+            pollerFactory: { await factory.makePoller($0) },
+            inboundDispatcherFactory: { token, _ in
+                inboundFactory.makeDispatcher(token: token)
+            }
+        )
+
+        await service.refresh()
+        let poller = await factory.poller(at: 0)
+        let update = TelegramUpdate(
+            updateId: 1,
+            message: nil,
+            callbackQuery: TelegramCallbackQuery(
+                id: "callback-1",
+                from: TelegramUser(id: 7, isBot: false, username: "tester"),
+                message: TelegramMessage(
+                    messageId: 2,
+                    date: 0,
+                    chat: TelegramChat(id: 7, type: "private"),
+                    text: "Approval"
+                ),
+                data: "v1|tok1|allow_once"
+            )
+        )
+
+        await poller.emit(update)
+
+        XCTAssertEqual(inboundFactory.requests, ["123:abc"])
+        XCTAssertEqual(inboundFactory.dispatchers.first?.updates, [update])
+        let handledChatIds = await authState.handledChatIds()
+        XCTAssertTrue(handledChatIds.isEmpty)
+    }
+
     private func makeDefaults(
         _ testName: StaticString = #function
     ) -> UserDefaults {
@@ -238,6 +281,27 @@ private final class FakeTelegramOutboundObserver: TelegramOutboundObserving {
 
     func stop() {
         stopCount += 1
+    }
+}
+
+@MainActor
+private final class FakeTelegramInboundDispatcherFactory {
+    private(set) var requests: [String] = []
+    private(set) var dispatchers: [FakeTelegramInboundDispatcher] = []
+
+    func makeDispatcher(token: String) -> TelegramInboundDispatching {
+        requests.append(token)
+        let dispatcher = FakeTelegramInboundDispatcher()
+        dispatchers.append(dispatcher)
+        return dispatcher
+    }
+}
+
+private final class FakeTelegramInboundDispatcher: TelegramInboundDispatching {
+    private(set) var updates: [TelegramUpdate] = []
+
+    func handle(_ update: TelegramUpdate) async {
+        updates.append(update)
     }
 }
 
