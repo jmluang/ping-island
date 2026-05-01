@@ -11,18 +11,30 @@ final class TelegramSettingsViewModel: ObservableObject {
         case networkError
     }
 
+    enum PairingState: Equatable {
+        case idle
+        case opening
+        case open
+    }
+
     @Published var tokenInput: String
     @Published private(set) var connectionState: ConnectionState = .idle
+    @Published private(set) var pairingState: PairingState = .idle
 
     private let tokenStore: TelegramTokenStoring
     private let clientFactory: (String) -> TelegramGetMeClient
+    private let beginPairing: () async -> Void
 
     init(
         tokenStore: TelegramTokenStoring = TelegramTokenStore(),
-        clientFactory: @escaping (String) -> TelegramGetMeClient = { TelegramAPIClient(token: $0) }
+        clientFactory: @escaping (String) -> TelegramGetMeClient = { TelegramAPIClient(token: $0) },
+        beginPairing: @escaping () async -> Void = {
+            await TelegramService.shared.beginPairing()
+        }
     ) {
         self.tokenStore = tokenStore
         self.clientFactory = clientFactory
+        self.beginPairing = beginPairing
         self.tokenInput = (try? tokenStore.load()) ?? ""
     }
 
@@ -51,6 +63,12 @@ final class TelegramSettingsViewModel: ObservableObject {
         case .failure:
             connectionState = .networkError
         }
+    }
+
+    func startPairing() async {
+        pairingState = .opening
+        await beginPairing()
+        pairingState = .open
     }
 }
 
@@ -97,6 +115,12 @@ struct TelegramSettingsView: View {
             }
 
             statusRow
+
+            Divider()
+                .background(Color.white.opacity(0.12))
+                .padding(.vertical, 4)
+
+            pairingSection
         }
         .padding(.top, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -111,6 +135,34 @@ struct TelegramSettingsView: View {
             Text(statusText)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.white.opacity(0.68))
+        }
+    }
+
+    private var pairingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Pairing")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+
+                Text(pairingStatusText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.58))
+            }
+
+            Button {
+                Task { await viewModel.startPairing() }
+            } label: {
+                if viewModel.pairingState == .opening {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("Start pairing")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(viewModel.pairingState == .opening)
         }
     }
 
@@ -139,6 +191,17 @@ struct TelegramSettingsView: View {
             return Color(red: 0.26, green: 0.82, blue: 0.46)
         case .invalidToken, .networkError:
             return Color(red: 1.0, green: 0.36, blue: 0.34)
+        }
+    }
+
+    private var pairingStatusText: String {
+        switch viewModel.pairingState {
+        case .idle:
+            return "Open a 5-minute window, then send any message to the bot."
+        case .opening:
+            return "Opening pairing window..."
+        case .open:
+            return "Pairing window is open for 5 minutes."
         }
     }
 }

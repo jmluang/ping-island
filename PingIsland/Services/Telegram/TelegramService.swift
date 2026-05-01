@@ -7,6 +7,7 @@ final class TelegramService {
     private var settings: TelegramSettings
     private let tokenStore: TelegramTokenStoring
     private let stateStore: TelegramStateStoring
+    private let authState: TelegramAuthControlling
     private let notificationCenter: NotificationCenter
     private let pollerFactory: (String) async -> TelegramPolling
 
@@ -18,6 +19,7 @@ final class TelegramService {
         settings: TelegramSettings = TelegramSettings(),
         tokenStore: TelegramTokenStoring = TelegramTokenStore(),
         stateStore: TelegramStateStoring = TelegramStateStore(),
+        authState: TelegramAuthControlling = TelegramAuthState(),
         notificationCenter: NotificationCenter = .default,
         pollerFactory: @escaping (String) async -> TelegramPolling = { token in
             TelegramLongPoller(client: TelegramAPIClient(token: token))
@@ -26,6 +28,7 @@ final class TelegramService {
         self.settings = settings
         self.tokenStore = tokenStore
         self.stateStore = stateStore
+        self.authState = authState
         self.notificationCenter = notificationCenter
         self.pollerFactory = pollerFactory
     }
@@ -84,7 +87,13 @@ final class TelegramService {
         let newPoller = await pollerFactory(token)
         poller = newPoller
         pollerToken = token
-        await newPoller.start { _ in }
+        await newPoller.start { [weak self] update in
+            await self?.handle(update)
+        }
+    }
+
+    func beginPairing() async {
+        await authState.openPairingWindow(timeout: 5 * 60)
     }
 
     private func stopCurrentPoller() async {
@@ -110,5 +119,13 @@ final class TelegramService {
         }
 
         return state.auth.chatId != nil
+    }
+
+    private func handle(_ update: TelegramUpdate) async {
+        guard let chatId = update.message?.chat?.id else {
+            return
+        }
+
+        _ = await authState.handleIncomingMessage(from: chatId)
     }
 }

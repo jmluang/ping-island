@@ -67,6 +67,52 @@ final class TelegramServiceLifecycleTests: XCTestCase {
         XCTAssertEqual(stopCount, 1)
     }
 
+    func testBeginPairingOpensAuthWindow() async {
+        let authState = FakeTelegramServiceAuthState()
+        let service = TelegramService(
+            settings: TelegramSettings(defaults: makeDefaults()),
+            tokenStore: FakeTelegramServiceTokenStore(token: nil),
+            stateStore: FakeTelegramServiceStateStore(chatId: nil),
+            authState: authState,
+            pollerFactory: { _ in FakeTelegramPolling() }
+        )
+
+        await service.beginPairing()
+
+        let openedTimeouts = await authState.openedTimeouts()
+        XCTAssertEqual(openedTimeouts, [300])
+    }
+
+    func testInboundMessageDelegatesChatToAuthState() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let authState = FakeTelegramServiceAuthState()
+        let factory = FakeTelegramPollerFactory()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: 7),
+            authState: authState,
+            pollerFactory: { await factory.makePoller($0) }
+        )
+
+        await service.refresh()
+        let poller = await factory.poller(at: 0)
+        await poller.emit(TelegramUpdate(
+            updateId: 1,
+            message: TelegramMessage(
+                messageId: 2,
+                date: 0,
+                chat: TelegramChat(id: 7, type: "private"),
+                text: "/start"
+            ),
+            callbackQuery: nil
+        ))
+
+        let handledChatIds = await authState.handledChatIds()
+        XCTAssertEqual(handledChatIds, [7])
+    }
+
     private func makeDefaults(
         _ testName: StaticString = #function
     ) -> UserDefaults {
@@ -104,13 +150,41 @@ private actor FakeTelegramPollerFactory {
 private actor FakeTelegramPolling: TelegramPolling {
     private(set) var startCount = 0
     private(set) var stopCount = 0
+    private var handler: (@Sendable (TelegramUpdate) async -> Void)?
 
     func start(handler: @escaping @Sendable (TelegramUpdate) async -> Void) async {
         startCount += 1
+        self.handler = handler
     }
 
     func stop() async {
         stopCount += 1
+    }
+
+    func emit(_ update: TelegramUpdate) async {
+        await handler?(update)
+    }
+}
+
+private actor FakeTelegramServiceAuthState: TelegramAuthControlling {
+    private var timeouts: [TimeInterval] = []
+    private var chatIds: [Int64] = []
+
+    func openPairingWindow(timeout: TimeInterval) {
+        timeouts.append(timeout)
+    }
+
+    func handleIncomingMessage(from incomingChatId: Int64) -> TelegramAuthState.AuthDecision {
+        chatIds.append(incomingChatId)
+        return .dropped
+    }
+
+    func openedTimeouts() -> [TimeInterval] {
+        timeouts
+    }
+
+    func handledChatIds() -> [Int64] {
+        chatIds
     }
 }
 

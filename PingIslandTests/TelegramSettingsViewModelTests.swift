@@ -73,6 +73,34 @@ final class TelegramSettingsViewModelTests: XCTestCase {
         XCTAssertNil(store.savedToken)
         XCTAssertEqual(viewModel.connectionState, .invalidToken)
     }
+
+    func testStartPairingCallsServiceAndMarksWindowOpen() async {
+        let pairingRecorder = PairingRecorder()
+        let viewModel = TelegramSettingsViewModel(
+            tokenStore: FakeTelegramTokenStore(),
+            beginPairing: {
+                await pairingRecorder.record()
+            }
+        )
+
+        await viewModel.startPairing()
+
+        let pairingCallCount = await pairingRecorder.callCount()
+        XCTAssertEqual(pairingCallCount, 1)
+        XCTAssertEqual(viewModel.pairingState, .open)
+    }
+}
+
+private actor PairingRecorder {
+    private var calls = 0
+
+    func record() {
+        calls += 1
+    }
+
+    func callCount() -> Int {
+        calls
+    }
 }
 
 private final class FakeTelegramTokenStore: TelegramTokenStoring {

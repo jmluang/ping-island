@@ -1,6 +1,11 @@
 import Foundation
 
-actor TelegramAuthState {
+protocol TelegramAuthControlling: Sendable {
+    func openPairingWindow(timeout: TimeInterval) async
+    func handleIncomingMessage(from incomingChatId: Int64) async -> TelegramAuthState.AuthDecision
+}
+
+actor TelegramAuthState: TelegramAuthControlling {
     enum AuthDecision: Equatable {
         case alreadyPaired
         case captured(chatId: Int64)
