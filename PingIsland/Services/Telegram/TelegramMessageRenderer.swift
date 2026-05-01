@@ -26,10 +26,7 @@ enum TelegramAttentionPayload: Equatable {
             return (id, approval)
         }
 
-        guard let intervention = session.intervention,
-              intervention.kind == .question,
-              isFixedChoiceQuestion(intervention)
-        else {
+        guard let intervention = session.intervention, intervention.kind == .question else {
             return nil
         }
 
@@ -178,7 +175,11 @@ enum TelegramMessageRenderer {
         guard TelegramAttentionPayload.isFixedChoiceQuestion(intervention),
               let question = questions.first
         else {
-            return TelegramRenderedMessage(text: "", replyMarkup: nil, callbackResolutions: [:])
+            return TelegramRenderedMessage(
+                text: TelegramText.truncate(questionFallbackText(for: intervention), limit: 4096),
+                replyMarkup: nil,
+                callbackResolutions: [:]
+            )
         }
 
         var resolutions: [String: TelegramPersistentState.CallbackResolution] = [:]
@@ -228,6 +229,23 @@ enum TelegramMessageRenderer {
         lines.append("CWD: \(session.cwd)")
         lines.append("Session: \(session.sessionId)")
         return lines.joined(separator: "\n")
+    }
+
+    private static func questionFallbackText(for intervention: SessionIntervention) -> String {
+        let questions = intervention.resolvedQuestions
+        guard questions.count == 1, let question = questions.first else {
+            return "📋 此请求包含多个问题，请在 Mac 上处理"
+        }
+
+        if question.isSecret {
+            return "🔒 此问题需要密文回答，请在 Mac 上处理"
+        }
+
+        if question.allowsMultiple {
+            return "☑️ 此问题可多选，请在 Mac 上处理"
+        }
+
+        return "📝 此问题需要自由文本回答，请在 Mac 上处理"
     }
 
     private struct ApprovalButton {

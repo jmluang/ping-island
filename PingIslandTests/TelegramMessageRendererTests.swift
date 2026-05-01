@@ -138,6 +138,62 @@ final class TelegramMessageRendererTests: XCTestCase {
         XCTAssertEqual(rendered.callbackResolutions["tok1"]?.issuedAt, issuedAt)
     }
 
+    func testRenderAllowsOtherQuestionRoutesBackToMac() {
+        let rendered = renderQuestionFallback(makeQuestionIntervention(allowsOther: true))
+
+        XCTAssertEqual(rendered.text, "📝 此问题需要自由文本回答，请在 Mac 上处理")
+        XCTAssertNil(rendered.replyMarkup)
+        XCTAssertTrue(rendered.callbackResolutions.isEmpty)
+    }
+
+    func testRenderSecretQuestionRoutesBackToMac() {
+        let rendered = renderQuestionFallback(makeQuestionIntervention(isSecret: true))
+
+        XCTAssertEqual(rendered.text, "🔒 此问题需要密文回答，请在 Mac 上处理")
+        XCTAssertNil(rendered.replyMarkup)
+        XCTAssertTrue(rendered.callbackResolutions.isEmpty)
+    }
+
+    func testRenderMultiSelectQuestionRoutesBackToMac() {
+        let rendered = renderQuestionFallback(makeQuestionIntervention(allowsMultiple: true))
+
+        XCTAssertEqual(rendered.text, "☑️ 此问题可多选，请在 Mac 上处理")
+        XCTAssertNil(rendered.replyMarkup)
+        XCTAssertTrue(rendered.callbackResolutions.isEmpty)
+    }
+
+    func testRenderMultiQuestionInterventionRoutesBackToMac() {
+        var intervention = makeQuestionIntervention()
+        let secondQuestion = SessionInterventionQuestion(
+            id: "question-2",
+            header: "Second",
+            prompt: "Pick again",
+            detail: nil,
+            options: [
+                .init(id: "c", title: "Option C", detail: nil)
+            ],
+            allowsMultiple: false,
+            allowsOther: false,
+            isSecret: false
+        )
+        intervention = SessionIntervention(
+            id: intervention.id,
+            kind: intervention.kind,
+            title: intervention.title,
+            message: intervention.message,
+            options: intervention.options,
+            questions: intervention.questions + [secondQuestion],
+            supportsSessionScope: intervention.supportsSessionScope,
+            metadata: intervention.metadata
+        )
+
+        let rendered = renderQuestionFallback(intervention)
+
+        XCTAssertEqual(rendered.text, "📋 此请求包含多个问题，请在 Mac 上处理")
+        XCTAssertNil(rendered.replyMarkup)
+        XCTAssertTrue(rendered.callbackResolutions.isEmpty)
+    }
+
     private func makeSession(
         provider: SessionProvider = .claude,
         ingress: SessionIngress = .hookBridge,
@@ -168,7 +224,21 @@ final class TelegramMessageRendererTests: XCTestCase {
         )
     }
 
-    private func makeQuestionIntervention() -> SessionIntervention {
+    private func renderQuestionFallback(_ intervention: SessionIntervention) -> TelegramRenderedMessage {
+        TelegramMessageRenderer.render(
+            session: makeSession(intervention: intervention, phase: .idle),
+            payload: .question(intervention: intervention),
+            issuedAt: Date(timeIntervalSince1970: 1_775_000_000),
+            tokenProvider: SequentialTokenProvider().nextToken
+        )
+    }
+
+    private func makeQuestionIntervention(
+        allowsMultiple: Bool = false,
+        allowsOther: Bool = false,
+        isSecret: Bool = false,
+        options: [SessionInterventionOption]? = nil
+    ) -> SessionIntervention {
         SessionIntervention(
             id: "intervention-1",
             kind: .question,
@@ -181,13 +251,13 @@ final class TelegramMessageRendererTests: XCTestCase {
                     header: "Need direction",
                     prompt: "Pick a path",
                     detail: "Choose one option",
-                    options: [
+                    options: options ?? [
                         .init(id: "a", title: "Option A", detail: nil),
                         .init(id: "b", title: "Option B", detail: "Second")
                     ],
-                    allowsMultiple: false,
-                    allowsOther: false,
-                    isSecret: false
+                    allowsMultiple: allowsMultiple,
+                    allowsOther: allowsOther,
+                    isSecret: isSecret
                 )
             ],
             supportsSessionScope: false,
