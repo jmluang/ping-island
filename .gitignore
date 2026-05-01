@@ -47,3 +47,7 @@ releases/notes/*
 *.xcodeproj.backup/
 CLAUDE.md
 .omx/
+
+# Local-only planning drafts and isolated worktrees
+.worktrees/
+docs/plans/
