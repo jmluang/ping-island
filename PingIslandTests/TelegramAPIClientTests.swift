@@ -2,6 +2,19 @@ import XCTest
 @testable import Ping_Island
 
 final class TelegramAPIClientTests: XCTestCase {
+    func testTruncateUnderLimitReturnsUnchanged() {
+        XCTAssertEqual(TelegramText.truncate("hello", limit: 4096), "hello")
+    }
+
+    func testTruncateOverLimitAppendsSuffix() {
+        let input = String(repeating: "a", count: 4100)
+
+        let result = TelegramText.truncate(input, limit: 4096)
+
+        XCTAssertEqual(result.count, 4096)
+        XCTAssertTrue(result.hasSuffix("… (truncated; open notch for full)"))
+    }
+
     func testGetMeReturnsUsername() async throws {
         let session = FakeURLSession()
         session.responses["/getMe"] = .success(
