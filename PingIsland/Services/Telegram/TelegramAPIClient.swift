@@ -25,6 +25,34 @@ struct TelegramUser: Codable, Equatable {
     }
 }
 
+struct TelegramMessage: Codable, Equatable {
+    let messageId: Int64
+    let date: Int
+
+    enum CodingKeys: String, CodingKey {
+        case messageId = "message_id"
+        case date
+    }
+}
+
+struct TelegramInlineKeyboardButton: Encodable, Equatable {
+    let text: String
+    let callbackData: String
+
+    enum CodingKeys: String, CodingKey {
+        case text
+        case callbackData = "callback_data"
+    }
+}
+
+struct TelegramInlineKeyboardMarkup: Encodable, Equatable {
+    let inlineKeyboard: [[TelegramInlineKeyboardButton]]
+
+    enum CodingKeys: String, CodingKey {
+        case inlineKeyboard = "inline_keyboard"
+    }
+}
+
 private struct TelegramEnvelope<T: Decodable>: Decodable {
     let ok: Bool
     let result: T?
@@ -51,6 +79,34 @@ final class TelegramAPIClient {
 
     func getMe() async -> Result<TelegramUser, TelegramAPIError> {
         await call("getMe", payload: Optional<EmptyPayload>.none)
+    }
+
+    func sendMessage(
+        chatId: Int64,
+        text: String,
+        replyMarkup: TelegramInlineKeyboardMarkup? = nil,
+        disableNotification: Bool = false
+    ) async -> Result<TelegramMessage, TelegramAPIError> {
+        struct Payload: Encodable {
+            let chatId: Int64
+            let text: String
+            let replyMarkup: TelegramInlineKeyboardMarkup?
+            let disableNotification: Bool?
+
+            enum CodingKeys: String, CodingKey {
+                case chatId = "chat_id"
+                case text
+                case replyMarkup = "reply_markup"
+                case disableNotification = "disable_notification"
+            }
+        }
+
+        return await call("sendMessage", payload: Payload(
+            chatId: chatId,
+            text: text,
+            replyMarkup: replyMarkup,
+            disableNotification: disableNotification ? true : nil
+        ))
     }
 
     private struct EmptyPayload: Encodable {}

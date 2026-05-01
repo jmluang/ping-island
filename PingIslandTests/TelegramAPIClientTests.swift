@@ -16,6 +16,35 @@ final class TelegramAPIClientTests: XCTestCase {
         XCTAssertEqual(me.id, 123)
         XCTAssertEqual(session.recordedRequests.first?.url?.path, "/botTKN/getMe")
     }
+
+    func testSendMessagePostsCorrectBodyAndDecodesMessageId() async throws {
+        let session = FakeURLSession()
+        session.responses["/sendMessage"] = .success(
+            body: #"{"ok":true,"result":{"message_id":42,"date":0,"chat":{"id":7,"type":"private"}}}"#,
+            status: 200
+        )
+        let client = TelegramAPIClient(token: "TKN", session: session)
+
+        let message = try await client.sendMessage(
+            chatId: 7,
+            text: "hello",
+            replyMarkup: TelegramInlineKeyboardMarkup(inlineKeyboard: [[
+                .init(text: "Allow Once", callbackData: "v1|abc|allow_once")
+            ]])
+        ).get()
+
+        XCTAssertEqual(message.messageId, 42)
+        let request = try XCTUnwrap(session.recordedRequests.first)
+        XCTAssertEqual(request.url?.path, "/botTKN/sendMessage")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: Any])
+        XCTAssertEqual(json["chat_id"] as? Int, 7)
+        XCTAssertEqual(json["text"] as? String, "hello")
+        let replyMarkup = try XCTUnwrap(json["reply_markup"] as? [String: Any])
+        let inlineKeyboard = try XCTUnwrap(replyMarkup["inline_keyboard"] as? [[[String: Any]]])
+        XCTAssertEqual(inlineKeyboard[0][0]["text"] as? String, "Allow Once")
+        XCTAssertEqual(inlineKeyboard[0][0]["callback_data"] as? String, "v1|abc|allow_once")
+        XCTAssertNil(json["disable_notification"])
+    }
 }
 
 final class FakeURLSession: URLSessionProtocol, @unchecked Sendable {
