@@ -76,6 +76,71 @@ final class TelegramOutboundObserverTests: XCTestCase {
         XCTAssertTrue(state.callbacks.isEmpty)
     }
 
+    func testFinalizeMacResponseEditsMessageAndDropsRegistries() async throws {
+        let client = FakeTelegramMessagingClient()
+        let stateStore = InMemoryTelegramStateStore(makeStoredMessageState())
+        let observer = makeObserver(client: client, stateStore: stateStore)
+
+        await observer.finalizeResponse(.init(
+            sessionId: "session-1",
+            interventionId: "tool-1",
+            decision: .approveOnce,
+            source: .mac,
+            timestamp: Date(timeIntervalSince1970: 1_775_003_600)
+        ))
+
+        XCTAssertEqual(client.editedMessages.map(\.text), ["✅ Approved once · 在 Mac 上响应于 01:00"])
+        XCTAssertNil(client.editedMessages.first?.replyMarkup)
+        let state = try stateStore.load()
+        XCTAssertTrue(state.messages.isEmpty)
+        XCTAssertTrue(state.callbacks.isEmpty)
+    }
+
+    func testFinalizeTelegramResponseEditsMessageAndDropsRegistries() async throws {
+        let client = FakeTelegramMessagingClient()
+        let stateStore = InMemoryTelegramStateStore(makeStoredMessageState())
+        let observer = makeObserver(client: client, stateStore: stateStore)
+
+        await observer.finalizeResponse(.init(
+            sessionId: "session-1",
+            interventionId: "tool-1",
+            decision: .deny(reason: nil),
+            source: .telegram,
+            timestamp: Date(timeIntervalSince1970: 1_775_003_600)
+        ))
+
+        XCTAssertEqual(client.editedMessages.map(\.text), ["✅ Denied · 来自 Telegram · 01:00"])
+        let state = try stateStore.load()
+        XCTAssertTrue(state.messages.isEmpty)
+        XCTAssertTrue(state.callbacks.isEmpty)
+    }
+
+    private func makeStoredMessageState() -> TelegramPersistentState {
+        TelegramPersistentState(
+            messages: [
+                InterventionKey.make(sessionId: "session-1", interventionId: "tool-1"): .init(
+                    chatId: 123,
+                    messageId: 456,
+                    sentAt: Date(timeIntervalSince1970: 1_775_000_000)
+                )
+            ],
+            callbacks: [
+                "tok1": .init(
+                    sessionId: "session-1",
+                    interventionId: "tool-1",
+                    action: .allowOnce,
+                    issuedAt: Date(timeIntervalSince1970: 1_775_000_000)
+                ),
+                "tok2": .init(
+                    sessionId: "session-1",
+                    interventionId: "tool-1",
+                    action: .deny,
+                    issuedAt: Date(timeIntervalSince1970: 1_775_000_000)
+                )
+            ]
+        )
+    }
+
     private func makeObserver(
         client: FakeTelegramMessagingClient,
         stateStore: InMemoryTelegramStateStore = InMemoryTelegramStateStore()
@@ -87,6 +152,7 @@ final class TelegramOutboundObserverTests: XCTestCase {
             callbackRegistry: TelegramCallbackRegistry(stateStore: stateStore),
             rateLimitQueue: TelegramRateLimitQueue(minimumSpacing: 0),
             now: { Date(timeIntervalSince1970: 1_775_000_000) },
+            timeFormatter: { _ in "01:00" },
             tokenProvider: SequentialTelegramTokenProvider().nextToken
         )
     }

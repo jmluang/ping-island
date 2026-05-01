@@ -16,6 +16,7 @@ final class TelegramOutboundObserver {
     private let callbackRegistry: TelegramCallbackRegistry
     private let rateLimitQueue: TelegramRateLimitQueue
     private let now: () -> Date
+    private let timeFormatter: (Date) -> String
     private let tokenProvider: TelegramMessageRenderer.TokenProvider
     private let recentResponseTTL: TimeInterval
 
@@ -30,6 +31,7 @@ final class TelegramOutboundObserver {
         callbackRegistry: TelegramCallbackRegistry = TelegramCallbackRegistry(),
         rateLimitQueue: TelegramRateLimitQueue = TelegramRateLimitQueue(),
         now: @escaping () -> Date = Date.init,
+        timeFormatter: @escaping (Date) -> String = TelegramOutboundTimeFormatter.makeTimeString,
         tokenProvider: @escaping TelegramMessageRenderer.TokenProvider = { _ in
             TelegramCallbackTokenGenerator.makeToken()
         },
@@ -42,6 +44,7 @@ final class TelegramOutboundObserver {
         self.callbackRegistry = callbackRegistry
         self.rateLimitQueue = rateLimitQueue
         self.now = now
+        self.timeFormatter = timeFormatter
         self.tokenProvider = tokenProvider
         self.recentResponseTTL = recentResponseTTL
 
@@ -73,6 +76,47 @@ final class TelegramOutboundObserver {
             sessionId: response.sessionId,
             interventionId: response.interventionId
         )] = response.timestamp
+        Task { @MainActor in
+            await finalizeResponse(response)
+        }
+    }
+
+    func finalizeResponse(_ response: InterventionResponse) async {
+        let key = InterventionKey.make(
+            sessionId: response.sessionId,
+            interventionId: response.interventionId
+        )
+        recentResponses[key] = response.timestamp
+
+        guard let entry = try? await messageRegistry.entry(
+            sessionId: response.sessionId,
+            interventionId: response.interventionId
+        ) else {
+            return
+        }
+
+        await rateLimitQueue.enqueue(chatId: entry.chatId) { [client] in
+            switch await client.editMessageText(
+                chatId: entry.chatId,
+                messageId: entry.messageId,
+                text: self.finalText(for: response),
+                replyMarkup: nil
+            ) {
+            case .success:
+                return .success(())
+            case .failure(let error):
+                return .failure(error)
+            }
+        }
+
+        try? await messageRegistry.remove(
+            sessionId: response.sessionId,
+            interventionId: response.interventionId
+        )
+        _ = try? await callbackRegistry.remove(
+            sessionId: response.sessionId,
+            interventionId: response.interventionId
+        )
     }
 
     func processSnapshot(_ sessions: [SessionState]) async {
@@ -176,6 +220,31 @@ final class TelegramOutboundObserver {
         _ = try? await callbackRegistry.remove(sessionId: ids.sessionId, interventionId: ids.interventionId)
     }
 
+    private func finalText(for response: InterventionResponse) -> String {
+        let decision = decisionText(for: response.decision)
+        let time = timeFormatter(response.timestamp)
+
+        switch response.source {
+        case .mac:
+            return "✅ \(decision) · 在 Mac 上响应于 \(time)"
+        case .telegram:
+            return "✅ \(decision) · 来自 Telegram · \(time)"
+        }
+    }
+
+    private func decisionText(for decision: InterventionResponse.Decision) -> String {
+        switch decision {
+        case .approveOnce:
+            return "Approved once"
+        case .approveForSession:
+            return "Approved for session"
+        case .deny:
+            return "Denied"
+        case .answer:
+            return "Answered"
+        }
+    }
+
     private func pruneRecentResponses() {
         let cutoff = now().addingTimeInterval(-recentResponseTTL)
         recentResponses = recentResponses.filter { $0.value >= cutoff }
@@ -211,5 +280,13 @@ enum TelegramCallbackTokenGenerator {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+enum TelegramOutboundTimeFormatter {
+    static func makeTimeString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
     }
 }
