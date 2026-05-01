@@ -14,6 +14,10 @@ enum TelegramAPIError: Error, Equatable {
     case transport(String)
 }
 
+protocol TelegramGetMeClient {
+    func getMe() async -> Result<TelegramUser, TelegramAPIError>
+}
+
 struct TelegramUser: Codable, Equatable {
     let id: Int64
     let isBot: Bool?
@@ -274,3 +278,5 @@ final class TelegramAPIClient {
         return .success(result)
     }
 }
+
+extension TelegramAPIClient: TelegramGetMeClient {}

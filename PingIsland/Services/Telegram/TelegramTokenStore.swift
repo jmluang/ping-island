@@ -1,6 +1,12 @@
 import Foundation
 import Security
 
+protocol TelegramTokenStoring {
+    func save(_ token: String) throws
+    func load() throws -> String?
+    func clear() throws
+}
+
 struct TelegramTokenStore {
     private let service: String
     private let account: String
@@ -75,6 +81,8 @@ struct TelegramTokenStore {
         ]
     }
 }
+
+extension TelegramTokenStore: TelegramTokenStoring {}
 
 enum TelegramTokenStoreError: Error, Equatable {
     case keychainStatus(OSStatus)
