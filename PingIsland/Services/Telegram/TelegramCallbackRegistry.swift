@@ -31,4 +31,21 @@ actor TelegramCallbackRegistry {
         }
         try stateStore.save(state)
     }
+
+    @discardableResult
+    func remove(sessionId: String, interventionId: String) throws -> Set<String> {
+        var state = try stateStore.load()
+        let tokens = Set(state.callbacks.compactMap { token, resolution in
+            resolution.sessionId == sessionId && resolution.interventionId == interventionId ? token : nil
+        })
+        guard !tokens.isEmpty else {
+            return []
+        }
+
+        for token in tokens {
+            state.callbacks.removeValue(forKey: token)
+        }
+        try stateStore.save(state)
+        return tokens
+    }
 }

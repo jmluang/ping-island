@@ -57,6 +57,28 @@ final class TelegramCallbackRegistryTests: XCTestCase {
         XCTAssertNil(removedResolution)
     }
 
+    func testRemoveByInterventionDeletesMatchingTokens() async throws {
+        let matchingAllow = makeResolution(action: .allowOnce)
+        let matchingDeny = makeResolution(action: .deny)
+        let other = TelegramPersistentState.CallbackResolution(
+            sessionId: "session-2",
+            interventionId: "tool-use-1",
+            action: .deny,
+            issuedAt: Date(timeIntervalSince1970: 1_775_000_000)
+        )
+        let stateStore = InMemoryTelegramStateStore(TelegramPersistentState(callbacks: [
+            "allow-token": matchingAllow,
+            "deny-token": matchingDeny,
+            "other-token": other
+        ]))
+        let registry = TelegramCallbackRegistry(stateStore: stateStore)
+
+        let removedTokens = try await registry.remove(sessionId: "session-1", interventionId: "tool-use-1")
+
+        XCTAssertEqual(removedTokens, ["allow-token", "deny-token"])
+        XCTAssertEqual(try stateStore.load().callbacks, ["other-token": other])
+    }
+
     private func makeResolution(
         action: TelegramPersistentState.CallbackResolution.Action
     ) -> TelegramPersistentState.CallbackResolution {

@@ -26,6 +26,22 @@ protocol TelegramUpdatesClient {
     ) async -> Result<[TelegramUpdate], TelegramAPIError>
 }
 
+protocol TelegramMessagingClient {
+    func sendMessage(
+        chatId: Int64,
+        text: String,
+        replyMarkup: TelegramInlineKeyboardMarkup?,
+        disableNotification: Bool
+    ) async -> Result<TelegramMessage, TelegramAPIError>
+
+    func editMessageText(
+        chatId: Int64,
+        messageId: Int64,
+        text: String,
+        replyMarkup: TelegramInlineKeyboardMarkup?
+    ) async -> Result<TelegramMessage, TelegramAPIError>
+}
+
 struct TelegramUser: Codable, Equatable {
     let id: Int64
     let isBot: Bool?
@@ -286,6 +302,8 @@ final class TelegramAPIClient {
         return .success(result)
     }
 }
+
+extension TelegramAPIClient: TelegramMessagingClient {}
 
 extension TelegramAPIClient: TelegramGetMeClient {}
 
