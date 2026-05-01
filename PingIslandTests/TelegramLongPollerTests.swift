@@ -26,6 +26,26 @@ final class TelegramLongPollerTests: XCTestCase {
         XCTAssertEqual(updateIds, [100, 101, 102])
     }
 
+    func testOffsetPersistedAfterEachBatch() async {
+        let client = FakeTelegramUpdatesClient(results: [
+            .success([
+                makeUpdate(100)
+            ]),
+            .success([
+                makeUpdate(101),
+                makeUpdate(102)
+            ])
+        ])
+        let stateStore = FakeTelegramStateStore()
+        let poller = TelegramLongPoller(client: client, stateStore: stateStore)
+
+        await poller.start { _ in }
+        await client.waitForCallCount(2)
+        await poller.stop()
+
+        XCTAssertEqual(stateStore.savedOffsets, [101, 103])
+    }
+
     private func makeUpdate(_ updateId: Int64) -> TelegramUpdate {
         TelegramUpdate(updateId: updateId, message: nil, callbackQuery: nil)
     }
@@ -86,6 +106,7 @@ private actor FakeTelegramUpdatesClient: TelegramUpdatesClient {
 
 private final class FakeTelegramStateStore: TelegramStateStoring {
     private(set) var state = TelegramPersistentState()
+    private(set) var savedOffsets: [Int64?] = []
 
     func load() throws -> TelegramPersistentState {
         state
@@ -93,5 +114,6 @@ private final class FakeTelegramStateStore: TelegramStateStoring {
 
     func save(_ state: TelegramPersistentState) throws {
         self.state = state
+        savedOffsets.append(state.poller.offset)
     }
 }
