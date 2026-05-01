@@ -283,7 +283,11 @@ class SessionMonitor: ObservableObject {
 
     // MARK: - Permission Handling
 
-    func approvePermission(sessionId: String, forSession: Bool = false) {
+    func approvePermission(
+        sessionId: String,
+        forSession: Bool = false,
+        source: InterventionResponse.Source = .mac
+    ) {
         Task {
             guard let session = await SessionStore.shared.session(for: sessionId) else {
                 return
@@ -348,7 +352,11 @@ class SessionMonitor: ObservableObject {
         }
     }
 
-    func denyPermission(sessionId: String, reason: String?) {
+    func denyPermission(
+        sessionId: String,
+        reason: String?,
+        source: InterventionResponse.Source = .mac
+    ) {
         Task {
             guard let session = await SessionStore.shared.session(for: sessionId) else {
                 return
@@ -394,7 +402,11 @@ class SessionMonitor: ObservableObject {
         }
     }
 
-    func answerIntervention(sessionId: String, answers: [String: [String]]) {
+    func answerIntervention(
+        sessionId: String,
+        answers: [String: [String]],
+        source: InterventionResponse.Source = .mac
+    ) {
         Task {
             guard let session = await SessionStore.shared.session(for: sessionId) else {
                 return
