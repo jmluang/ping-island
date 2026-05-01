@@ -39,6 +39,20 @@ final class TelegramInboundDispatcherTests: XCTestCase {
         ])
     }
 
+    func testAnswerOptionCallbackDispatchesAnswerThroughHub() async throws {
+        let stateStore = InMemoryTelegramStateStore(makeState(
+            action: .answerOption(questionId: "question-1", optionTitle: "Option A")
+        ))
+        let hub = FakeTelegramInboundHub()
+        let dispatcher = makeDispatcher(stateStore: stateStore, hub: hub)
+
+        await dispatcher.handle(makeUpdate(callbackData: "v1|tok1|answer"))
+
+        XCTAssertEqual(hub.answerCalls, [
+            .init(sessionId: "session-1", answers: ["question-1": ["Option A"]], source: .telegram)
+        ])
+    }
+
     func testMissingTokenEditsAlreadyHandled() async throws {
         let stateStore = InMemoryTelegramStateStore(TelegramPersistentState(auth: .init(chatId: 123)))
         let client = FakeTelegramInboundClient()
@@ -169,9 +183,16 @@ private final class FakeTelegramInboundHub: TelegramInboundActionDispatching {
         let source: InterventionResponse.Source
     }
 
+    struct AnswerCall: Equatable {
+        let sessionId: String
+        let answers: [String: [String]]
+        let source: InterventionResponse.Source
+    }
+
     private let result: Result<Void, InterventionActionDispatchError>
     private(set) var approveCalls: [ApproveCall] = []
     private(set) var denyCalls: [DenyCall] = []
+    private(set) var answerCalls: [AnswerCall] = []
 
     init(result: Result<Void, InterventionActionDispatchError> = .success(())) {
         self.result = result
@@ -200,6 +221,7 @@ private final class FakeTelegramInboundHub: TelegramInboundActionDispatching {
         answers: [String: [String]],
         source: InterventionResponse.Source
     ) async -> Result<Void, InterventionActionDispatchError> {
-        result
+        answerCalls.append(.init(sessionId: sessionId, answers: answers, source: source))
+        return result
     }
 }

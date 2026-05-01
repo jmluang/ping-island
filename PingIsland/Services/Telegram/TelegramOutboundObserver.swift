@@ -123,14 +123,16 @@ final class TelegramOutboundObserver {
         pruneRecentResponses()
 
         let renderables = Dictionary(uniqueKeysWithValues: sessions.compactMap { session -> (String, RenderableAttention)? in
-            guard let payload = TelegramAttentionPayload.approval(for: session),
-                  case .approval(let id, _, _) = payload
-            else {
+            guard let renderable = TelegramAttentionPayload.renderable(for: session) else {
                 return nil
             }
 
-            let key = InterventionKey.make(sessionId: session.sessionId, interventionId: id)
-            return (key, RenderableAttention(session: session, interventionId: id, payload: payload))
+            let key = InterventionKey.make(sessionId: session.sessionId, interventionId: renderable.id)
+            return (key, RenderableAttention(
+                session: session,
+                interventionId: renderable.id,
+                payload: renderable.payload
+            ))
         })
 
         let currentKeys = Set(renderables.keys)

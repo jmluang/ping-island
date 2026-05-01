@@ -19,6 +19,34 @@ enum TelegramAttentionPayload: Equatable {
 
         return .approval(id: intervention.id, permission: nil, intervention: intervention)
     }
+
+    static func renderable(for session: SessionState) -> (id: String, payload: TelegramAttentionPayload)? {
+        if let approval = approval(for: session),
+           case .approval(let id, _, _) = approval {
+            return (id, approval)
+        }
+
+        guard let intervention = session.intervention,
+              intervention.kind == .question,
+              isFixedChoiceQuestion(intervention)
+        else {
+            return nil
+        }
+
+        return (intervention.id, .question(intervention: intervention))
+    }
+
+    static func isFixedChoiceQuestion(_ intervention: SessionIntervention) -> Bool {
+        let questions = intervention.resolvedQuestions
+        guard questions.count == 1, let question = questions.first else {
+            return false
+        }
+
+        return !question.allowsOther
+            && !question.isSecret
+            && !question.allowsMultiple
+            && !question.options.isEmpty
+    }
 }
 
 struct TelegramRenderedMessage: Equatable {
@@ -46,8 +74,13 @@ enum TelegramMessageRenderer {
                 issuedAt: issuedAt,
                 tokenProvider: tokenProvider
             )
-        case .question:
-            return TelegramRenderedMessage(text: "", replyMarkup: nil, callbackResolutions: [:])
+        case .question(let intervention):
+            return renderQuestion(
+                session: session,
+                intervention: intervention,
+                issuedAt: issuedAt,
+                tokenProvider: tokenProvider
+            )
         }
     }
 
@@ -133,6 +166,68 @@ enum TelegramMessageRenderer {
         }
 
         return buttons
+    }
+
+    private static func renderQuestion(
+        session: SessionState,
+        intervention: SessionIntervention,
+        issuedAt: Date,
+        tokenProvider: TokenProvider
+    ) -> TelegramRenderedMessage {
+        let questions = intervention.resolvedQuestions
+        guard TelegramAttentionPayload.isFixedChoiceQuestion(intervention),
+              let question = questions.first
+        else {
+            return TelegramRenderedMessage(text: "", replyMarkup: nil, callbackResolutions: [:])
+        }
+
+        var resolutions: [String: TelegramPersistentState.CallbackResolution] = [:]
+        let buttons = question.options.map { option in
+            let action = TelegramPersistentState.CallbackResolution.Action.answerOption(
+                questionId: question.id,
+                optionTitle: option.title
+            )
+            let token = tokenProvider(action)
+            resolutions[token] = TelegramPersistentState.CallbackResolution(
+                sessionId: session.sessionId,
+                interventionId: intervention.id,
+                action: action,
+                issuedAt: issuedAt
+            )
+            return TelegramInlineKeyboardButton(
+                text: option.title,
+                callbackData: "v1|\(token)|answer"
+            )
+        }
+
+        return TelegramRenderedMessage(
+            text: TelegramText.truncate(questionText(session: session, intervention: intervention, question: question), limit: 4096),
+            replyMarkup: TelegramInlineKeyboardMarkup(inlineKeyboard: [buttons]),
+            callbackResolutions: resolutions
+        )
+    }
+
+    private static func questionText(
+        session: SessionState,
+        intervention: SessionIntervention,
+        question: SessionInterventionQuestion
+    ) -> String {
+        var lines = [
+            "Question requested",
+            "Agent: \(session.messageBadgeDisplayName)",
+            "Project: \(session.projectName)",
+            "Title: \(intervention.title)",
+            "Question: \(question.prompt)"
+        ]
+
+        if let detail = question.detail ?? (!intervention.message.isEmpty ? intervention.message : nil),
+           !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append("Details: \(detail)")
+        }
+
+        lines.append("CWD: \(session.cwd)")
+        lines.append("Session: \(session.sessionId)")
+        return lines.joined(separator: "\n")
     }
 
     private struct ApprovalButton {

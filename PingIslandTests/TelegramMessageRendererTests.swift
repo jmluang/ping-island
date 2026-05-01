@@ -99,6 +99,45 @@ final class TelegramMessageRendererTests: XCTestCase {
         XCTAssertTrue(rendered.text.hasSuffix("… (truncated; open notch for full)"))
     }
 
+    func testRenderSingleQuestionFixedChoiceUsesOptionButtons() throws {
+        let issuedAt = Date(timeIntervalSince1970: 1_775_000_000)
+        let intervention = makeQuestionIntervention()
+        let session = makeSession(intervention: intervention, phase: .idle)
+
+        let rendered = TelegramMessageRenderer.render(
+            session: session,
+            payload: .question(intervention: intervention),
+            issuedAt: issuedAt,
+            tokenProvider: SequentialTokenProvider().nextToken
+        )
+
+        XCTAssertEqual(rendered.text, """
+        Question requested
+        Agent: Claude Code
+        Project: ping-island
+        Title: Need direction
+        Question: Pick a path
+        Details: Choose one option
+        CWD: /tmp/ping-island
+        Session: session-1
+        """)
+        XCTAssertEqual(rendered.replyMarkup?.inlineKeyboard.flatMap { $0 }.map(\.text), [
+            "Option A",
+            "Option B"
+        ])
+        XCTAssertEqual(rendered.replyMarkup?.inlineKeyboard.flatMap { $0 }.map(\.callbackData), [
+            "v1|tok1|answer",
+            "v1|tok2|answer"
+        ])
+        XCTAssertEqual(
+            rendered.callbackResolutions["tok1"]?.action,
+            .answerOption(questionId: "question-1", optionTitle: "Option A")
+        )
+        XCTAssertEqual(rendered.callbackResolutions["tok1"]?.sessionId, "session-1")
+        XCTAssertEqual(rendered.callbackResolutions["tok1"]?.interventionId, "intervention-1")
+        XCTAssertEqual(rendered.callbackResolutions["tok1"]?.issuedAt, issuedAt)
+    }
+
     private func makeSession(
         provider: SessionProvider = .claude,
         ingress: SessionIngress = .hookBridge,
@@ -126,6 +165,33 @@ final class TelegramMessageRendererTests: XCTestCase {
             toolName: toolName,
             toolInput: input,
             receivedAt: Date(timeIntervalSince1970: 1_775_000_000)
+        )
+    }
+
+    private func makeQuestionIntervention() -> SessionIntervention {
+        SessionIntervention(
+            id: "intervention-1",
+            kind: .question,
+            title: "Need direction",
+            message: "Choose one option",
+            options: [],
+            questions: [
+                SessionInterventionQuestion(
+                    id: "question-1",
+                    header: "Need direction",
+                    prompt: "Pick a path",
+                    detail: "Choose one option",
+                    options: [
+                        .init(id: "a", title: "Option A", detail: nil),
+                        .init(id: "b", title: "Option B", detail: "Second")
+                    ],
+                    allowsMultiple: false,
+                    allowsOther: false,
+                    isSecret: false
+                )
+            ],
+            supportsSessionScope: false,
+            metadata: [:]
         )
     }
 }
