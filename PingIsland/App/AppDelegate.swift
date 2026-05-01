@@ -48,6 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Keep hook and app-server ingestion alive even when first-run onboarding
             // defers the initial Island window.
             startupSessionMonitor.startMonitoring()
+            InterventionActionHub.shared.registerDispatcher(startupSessionMonitor)
         }
 
         if launchFlow.shouldCreateInitialIslandWindow {
