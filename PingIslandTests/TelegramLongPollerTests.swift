@@ -46,6 +46,20 @@ final class TelegramLongPollerTests: XCTestCase {
         XCTAssertEqual(stateStore.savedOffsets, [101, 103])
     }
 
+    func testStopHaltsLoop() async {
+        let client = FakeTelegramUpdatesClient(results: [], suspendsWhenExhausted: true)
+        let poller = TelegramLongPoller(client: client, stateStore: FakeTelegramStateStore())
+
+        await poller.start { _ in }
+        await client.waitForCallCount(1)
+
+        let runningBeforeStop = await poller.isRunning
+        XCTAssertTrue(runningBeforeStop)
+        await poller.stop()
+        let runningAfterStop = await poller.isRunning
+        XCTAssertFalse(runningAfterStop)
+    }
+
     private func makeUpdate(_ updateId: Int64) -> TelegramUpdate {
         TelegramUpdate(updateId: updateId, message: nil, callbackQuery: nil)
     }
@@ -65,11 +79,16 @@ private actor UpdateCollector {
 
 private actor FakeTelegramUpdatesClient: TelegramUpdatesClient {
     private var results: [Result<[TelegramUpdate], TelegramAPIError>]
+    private let suspendsWhenExhausted: Bool
     private var callCount = 0
     private var waiters: [(Int, CheckedContinuation<Void, Never>)] = []
 
-    init(results: [Result<[TelegramUpdate], TelegramAPIError>]) {
+    init(
+        results: [Result<[TelegramUpdate], TelegramAPIError>],
+        suspendsWhenExhausted: Bool = false
+    ) {
         self.results = results
+        self.suspendsWhenExhausted = suspendsWhenExhausted
     }
 
     func getUpdates(
@@ -80,6 +99,9 @@ private actor FakeTelegramUpdatesClient: TelegramUpdatesClient {
         callCount += 1
         resumeSatisfiedWaiters()
         guard !results.isEmpty else {
+            if suspendsWhenExhausted {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+            }
             return .success([])
         }
         return results.removeFirst()
