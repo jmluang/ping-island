@@ -75,6 +75,27 @@ final class TelegramAPIClientTests: XCTestCase {
         XCTAssertEqual(inlineKeyboard[0][0]["text"] as? String, "Open Mac")
         XCTAssertEqual(inlineKeyboard[0][0]["callback_data"] as? String, "v1|abc|open")
     }
+
+    func testAnswerCallbackQueryPostsCorrectBodyAndDecodesBool() async throws {
+        let session = FakeURLSession()
+        session.responses["/answerCallbackQuery"] = .success(
+            body: #"{"ok":true,"result":true}"#,
+            status: 200
+        )
+        let client = TelegramAPIClient(token: "TKN", session: session)
+
+        let answered = try await client.answerCallbackQuery(
+            callbackQueryId: "callback-1",
+            text: "Done"
+        ).get()
+
+        XCTAssertTrue(answered)
+        let request = try XCTUnwrap(session.recordedRequests.first)
+        XCTAssertEqual(request.url?.path, "/botTKN/answerCallbackQuery")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: Any])
+        XCTAssertEqual(json["callback_query_id"] as? String, "callback-1")
+        XCTAssertEqual(json["text"] as? String, "Done")
+    }
 }
 
 final class FakeURLSession: URLSessionProtocol, @unchecked Sendable {

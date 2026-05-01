@@ -137,6 +137,26 @@ final class TelegramAPIClient {
         ))
     }
 
+    func answerCallbackQuery(
+        callbackQueryId: String,
+        text: String? = nil
+    ) async -> Result<Bool, TelegramAPIError> {
+        struct Payload: Encodable {
+            let callbackQueryId: String
+            let text: String?
+
+            enum CodingKeys: String, CodingKey {
+                case callbackQueryId = "callback_query_id"
+                case text
+            }
+        }
+
+        return await call("answerCallbackQuery", payload: Payload(
+            callbackQueryId: callbackQueryId,
+            text: text
+        ))
+    }
+
     private struct EmptyPayload: Encodable {}
 
     private func call<Payload: Encodable, Response: Decodable>(
