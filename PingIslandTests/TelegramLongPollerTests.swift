@@ -60,6 +60,26 @@ final class TelegramLongPollerTests: XCTestCase {
         XCTAssertFalse(runningAfterStop)
     }
 
+    func testClientReturns401PollerStopsAndSurfacesInvalidToken() async {
+        let client = FakeTelegramUpdatesClient(results: [
+            .failure(.http(status: 401, description: "Unauthorized"))
+        ])
+        let invalidTokenRecorder = InvalidTokenRecorder()
+        let poller = TelegramLongPoller(
+            client: client,
+            stateStore: FakeTelegramStateStore(),
+            onInvalidToken: {
+                await invalidTokenRecorder.mark()
+            }
+        )
+
+        await poller.start { _ in }
+        await invalidTokenRecorder.waitUntilMarked()
+
+        let runningAfter401 = await poller.isRunning
+        XCTAssertFalse(runningAfter401)
+    }
+
     private func makeUpdate(_ updateId: Int64) -> TelegramUpdate {
         TelegramUpdate(updateId: updateId, message: nil, callbackQuery: nil)
     }
@@ -74,6 +94,30 @@ private actor UpdateCollector {
 
     func append(_ update: TelegramUpdate) {
         updates.append(update)
+    }
+}
+
+private actor InvalidTokenRecorder {
+    private var marked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func mark() {
+        marked = true
+        let continuations = waiters
+        waiters.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+
+    func waitUntilMarked() async {
+        if marked {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
     }
 }
 
