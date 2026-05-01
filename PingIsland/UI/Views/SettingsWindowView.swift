@@ -12,6 +12,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
     case mascot
     case sound
     case integration
+    case telegram
     case remote
     case labs
     case about
@@ -26,6 +27,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .mascot: return "宠物"
         case .sound: return "声音"
         case .integration: return "集成"
+        case .telegram: return "Telegram"
         case .remote: return "远程"
         case .labs: return "实验室"
         case .about: return "关于"
@@ -40,6 +42,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .mascot: return "客户端宠物与动作"
         case .sound: return "通知与提示音"
         case .integration: return "Hooks 与 IDE 扩展"
+        case .telegram: return "远程通知与远程批准"
         case .remote: return "SSH 主机与远程转发"
         case .labs: return "试验性特性"
         case .about: return "版本与更新"
@@ -54,6 +57,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .mascot: return "face.smiling.fill"
         case .sound: return "speaker.wave.2.fill"
         case .integration: return "link.circle.fill"
+        case .telegram: return "paperplane.fill"
         case .remote: return "network.badge.shield.half.filled"
         case .labs: return "flask.fill"
         case .about: return "info.circle.fill"
@@ -68,6 +72,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .mascot: return Color(red: 0.91, green: 0.27, blue: 0.81)  // Pink
         case .sound: return Color(red: 0.22, green: 0.83, blue: 0.42)
         case .integration: return Color(red: 0.16, green: 0.76, blue: 0.72)
+        case .telegram: return Color(red: 0.24, green: 0.58, blue: 0.98)
         case .remote: return Color(red: 0.95, green: 0.54, blue: 0.20)
         case .labs: return Color(red: 0.82, green: 0.48, blue: 0.97)
         case .about: return Color(red: 0.17, green: 0.60, blue: 0.96)
@@ -613,7 +618,7 @@ private struct SettingsPanelContentView: View {
         [
             SettingsSidebarSection(
                 title: nil,
-                categories: [.general, .shortcuts, .display, .mascot, .sound, .integration, .remote, .labs, .about]
+                categories: [.general, .shortcuts, .display, .mascot, .sound, .integration, .telegram, .remote, .labs, .about]
             )
         ]
     }
@@ -761,6 +766,8 @@ private struct SettingsPanelContentView: View {
                     soundContent
                 case .integration:
                     integrationContent
+                case .telegram:
+                    TelegramSettingsView()
                 case .remote:
                     remoteContent
                 case .labs:
