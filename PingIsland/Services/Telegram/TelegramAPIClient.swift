@@ -109,6 +109,34 @@ final class TelegramAPIClient {
         ))
     }
 
+    func editMessageText(
+        chatId: Int64,
+        messageId: Int64,
+        text: String,
+        replyMarkup: TelegramInlineKeyboardMarkup? = nil
+    ) async -> Result<TelegramMessage, TelegramAPIError> {
+        struct Payload: Encodable {
+            let chatId: Int64
+            let messageId: Int64
+            let text: String
+            let replyMarkup: TelegramInlineKeyboardMarkup?
+
+            enum CodingKeys: String, CodingKey {
+                case chatId = "chat_id"
+                case messageId = "message_id"
+                case text
+                case replyMarkup = "reply_markup"
+            }
+        }
+
+        return await call("editMessageText", payload: Payload(
+            chatId: chatId,
+            messageId: messageId,
+            text: text,
+            replyMarkup: replyMarkup
+        ))
+    }
+
     private struct EmptyPayload: Encodable {}
 
     private func call<Payload: Encodable, Response: Decodable>(
