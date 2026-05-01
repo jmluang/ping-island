@@ -18,6 +18,14 @@ protocol TelegramGetMeClient {
     func getMe() async -> Result<TelegramUser, TelegramAPIError>
 }
 
+protocol TelegramUpdatesClient {
+    func getUpdates(
+        offset: Int64?,
+        timeoutSeconds: Int,
+        allowedUpdates: [String]
+    ) async -> Result<[TelegramUpdate], TelegramAPIError>
+}
+
 struct TelegramUser: Codable, Equatable {
     let id: Int64
     let isBot: Bool?
@@ -280,3 +288,5 @@ final class TelegramAPIClient {
 }
 
 extension TelegramAPIClient: TelegramGetMeClient {}
+
+extension TelegramAPIClient: TelegramUpdatesClient {}

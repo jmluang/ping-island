@@ -1,5 +1,10 @@
 import Foundation
 
+protocol TelegramStateStoring {
+    func load() throws -> TelegramPersistentState
+    func save(_ state: TelegramPersistentState) throws
+}
+
 struct TelegramStateStore {
     private let directoryURL: URL
     private let fileManager: FileManager
@@ -77,6 +82,8 @@ struct TelegramStateStore {
         let version: Int
     }
 }
+
+extension TelegramStateStore: TelegramStateStoring {}
 
 enum TelegramStateStoreError: Error, Equatable {
     case migrationRequired(version: Int)
