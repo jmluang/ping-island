@@ -28,10 +28,38 @@ struct TelegramUser: Codable, Equatable {
 struct TelegramMessage: Codable, Equatable {
     let messageId: Int64
     let date: Int
+    let chat: TelegramChat?
+    let text: String?
 
     enum CodingKeys: String, CodingKey {
         case messageId = "message_id"
         case date
+        case chat
+        case text
+    }
+}
+
+struct TelegramChat: Codable, Equatable {
+    let id: Int64
+    let type: String
+}
+
+struct TelegramCallbackQuery: Codable, Equatable {
+    let id: String
+    let from: TelegramUser
+    let message: TelegramMessage?
+    let data: String?
+}
+
+struct TelegramUpdate: Codable, Equatable {
+    let updateId: Int64
+    let message: TelegramMessage?
+    let callbackQuery: TelegramCallbackQuery?
+
+    enum CodingKeys: String, CodingKey {
+        case updateId = "update_id"
+        case message
+        case callbackQuery = "callback_query"
     }
 }
 
@@ -154,6 +182,30 @@ final class TelegramAPIClient {
         return await call("answerCallbackQuery", payload: Payload(
             callbackQueryId: callbackQueryId,
             text: text
+        ))
+    }
+
+    func getUpdates(
+        offset: Int64? = nil,
+        timeoutSeconds: Int,
+        allowedUpdates: [String]
+    ) async -> Result<[TelegramUpdate], TelegramAPIError> {
+        struct Payload: Encodable {
+            let offset: Int64?
+            let timeout: Int
+            let allowedUpdates: [String]
+
+            enum CodingKeys: String, CodingKey {
+                case offset
+                case timeout
+                case allowedUpdates = "allowed_updates"
+            }
+        }
+
+        return await call("getUpdates", payload: Payload(
+            offset: offset,
+            timeout: timeoutSeconds,
+            allowedUpdates: allowedUpdates
         ))
     }
 

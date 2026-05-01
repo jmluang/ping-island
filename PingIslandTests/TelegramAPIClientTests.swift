@@ -96,6 +96,39 @@ final class TelegramAPIClientTests: XCTestCase {
         XCTAssertEqual(json["callback_query_id"] as? String, "callback-1")
         XCTAssertEqual(json["text"] as? String, "Done")
     }
+
+    func testGetUpdatesPostsPollingBodyAndDecodesMessagesAndCallbacks() async throws {
+        let session = FakeURLSession()
+        session.responses["/getUpdates"] = .success(
+            body: """
+            {"ok":true,"result":[
+              {"update_id":100,"message":{"message_id":1,"date":0,"chat":{"id":7,"type":"private"},"text":"/start"}},
+              {"update_id":101,"callback_query":{"id":"cb1","from":{"id":123,"is_bot":false,"username":"alice"},"message":{"message_id":2,"date":0,"chat":{"id":7,"type":"private"}},"data":"v1|abc|allow_once"}}
+            ]}
+            """,
+            status: 200
+        )
+        let client = TelegramAPIClient(token: "TKN", session: session)
+
+        let updates = try await client.getUpdates(
+            offset: 100,
+            timeoutSeconds: 30,
+            allowedUpdates: ["message", "callback_query"]
+        ).get()
+
+        XCTAssertEqual(updates.map(\.updateId), [100, 101])
+        XCTAssertEqual(updates[0].message?.text, "/start")
+        XCTAssertEqual(updates[0].message?.chat?.id, 7)
+        XCTAssertEqual(updates[1].callbackQuery?.id, "cb1")
+        XCTAssertEqual(updates[1].callbackQuery?.from.username, "alice")
+        XCTAssertEqual(updates[1].callbackQuery?.data, "v1|abc|allow_once")
+        let request = try XCTUnwrap(session.recordedRequests.first)
+        XCTAssertEqual(request.url?.path, "/botTKN/getUpdates")
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: try XCTUnwrap(request.httpBody)) as? [String: Any])
+        XCTAssertEqual(json["offset"] as? Int, 100)
+        XCTAssertEqual(json["timeout"] as? Int, 30)
+        XCTAssertEqual(json["allowed_updates"] as? [String], ["message", "callback_query"])
+    }
 }
 
 final class FakeURLSession: URLSessionProtocol, @unchecked Sendable {
