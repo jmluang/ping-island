@@ -3,8 +3,9 @@ import IslandShared
 @testable import IslandApp
 import Testing
 
-@Test
+@Test(.timeLimit(.minutes(1)))
 func socketServerPersistsStateOnlyEnvelopes() async throws {
+    try await withProcessIntegrationTestIsolation {
     try await withTemporaryDirectory { directory in
         let recorder = await MainActor.run { SnapshotRecorder() }
         let store = SessionStore { snapshot in
@@ -41,10 +42,12 @@ func socketServerPersistsStateOnlyEnvelopes() async throws {
             }
         }
     }
+    }
 }
 
-@Test
+@Test(.timeLimit(.minutes(1)))
 func socketServerReturnsApprovalDecisionForInteractiveEnvelopes() async throws {
+    try await withProcessIntegrationTestIsolation {
     try await withTemporaryDirectory { directory in
         let recorder = await MainActor.run { SnapshotRecorder() }
         let store = SessionStore { snapshot in
@@ -94,5 +97,6 @@ func socketServerReturnsApprovalDecisionForInteractiveEnvelopes() async throws {
             #expect(resolved.decision == .approve)
             #expect(resolved.errorMessage == nil)
         }
+    }
     }
 }

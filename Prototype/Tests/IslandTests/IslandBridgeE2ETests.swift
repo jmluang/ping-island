@@ -3,8 +3,9 @@ import IslandShared
 @testable import IslandApp
 import Testing
 
-@Test
-func islandBridgeAllowsStateOnlyEventsWhenAppIsUnavailable() throws {
+@Test(.timeLimit(.minutes(1)))
+func islandBridgeAllowsStateOnlyEventsWhenAppIsUnavailable() async throws {
+    try await withProcessIntegrationTestIsolation {
     let executable = try TestRuntime.executableURL(named: "PingIslandBridge")
     let process = try RunningProcess(
         executableURL: executable,
@@ -27,10 +28,12 @@ func islandBridgeAllowsStateOnlyEventsWhenAppIsUnavailable() throws {
     #expect(result.terminationStatus == 0)
     #expect(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     #expect(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
 }
 
-@Test
+@Test(.timeLimit(.minutes(1)))
 func islandBridgeDoesNotWaitForStdinEOFWhenPayloadAlreadyArrived() async throws {
+    try await withProcessIntegrationTestIsolation {
     let executable = try TestRuntime.executableURL(named: "PingIslandBridge")
     let process = try RunningProcess(
         executableURL: executable,
@@ -62,10 +65,12 @@ func islandBridgeDoesNotWaitForStdinEOFWhenPayloadAlreadyArrived() async throws 
     #expect(result.terminationStatus == 0)
     #expect(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     #expect(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
 }
 
-@Test
+@Test(.timeLimit(.minutes(1)))
 func islandBridgeWaitsForSplitJSONPayloadBeforeContinuing() async throws {
+    try await withProcessIntegrationTestIsolation {
     let executable = try TestRuntime.executableURL(named: "PingIslandBridge")
     let process = try RunningProcess(
         executableURL: executable,
@@ -103,10 +108,12 @@ func islandBridgeWaitsForSplitJSONPayloadBeforeContinuing() async throws {
     #expect(result.terminationStatus == 0)
     #expect(result.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     #expect(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
 }
 
-@Test
+@Test(.timeLimit(.minutes(1)))
 func islandBridgeRoundTripsApprovalRequestsThroughSocketServer() async throws {
+    try await withProcessIntegrationTestIsolation {
     try await withTemporaryDirectory { directory in
         let recorder = await MainActor.run { SnapshotRecorder() }
         let store = SessionStore { snapshot in
@@ -169,10 +176,12 @@ func islandBridgeRoundTripsApprovalRequestsThroughSocketServer() async throws {
             #expect(session.cwd == "/tmp/e2e-demo")
         }
     }
+    }
 }
 
-@Test
+@Test(.timeLimit(.minutes(1)))
 func remoteAgentFailsOpenWhenNoControlClientIsAttached() async throws {
+    try await withProcessIntegrationTestIsolation {
     let executable = try TestRuntime.executableURL(named: "PingIslandBridge")
     let socketID = UUID().uuidString.prefix(8)
     let hookSocketPath = "/tmp/pi-\(socketID)-h.sock"
@@ -219,4 +228,5 @@ func remoteAgentFailsOpenWhenNoControlClientIsAttached() async throws {
     #expect(response.decision == nil)
     #expect(response.updatedInput == nil)
     #expect(response.reason == nil)
+    }
 }

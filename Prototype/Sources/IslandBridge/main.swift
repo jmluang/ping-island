@@ -21,8 +21,8 @@ private let islandShutdownWrite: Int32 = Int32(SHUT_WR)
 
 @main
 struct IslandBridgeMain {
-    private static let stdinInitialPollTimeoutMs = 100
-    private static let stdinFollowUpPollTimeoutMs = 10
+    private static let stdinInitialPollTimeoutMs = 500
+    private static let stdinFollowUpPollTimeoutMs = 500
 
     static func main() async {
         Self.configureProcessSignalHandling()

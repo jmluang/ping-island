@@ -19,12 +19,36 @@ final class SessionMonitorNativeRuntimeTests: XCTestCase {
             approvedSessionIDs
         }
 
+        func waitForApprovalCount(_ count: Int) async -> [(String, Bool)] {
+            let deadline = Date().addingTimeInterval(2)
+            while approvedSessionIDs.count < count, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            return approvedSessionIDs
+        }
+
         func denials() -> [String] {
             deniedSessionIDs
         }
 
+        func waitForDenialCount(_ count: Int) async -> [String] {
+            let deadline = Date().addingTimeInterval(2)
+            while deniedSessionIDs.count < count, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            return deniedSessionIDs
+        }
+
         func answers() -> [(String, [String: [String]])] {
             answeredSessionIDs
+        }
+
+        func waitForAnswerCount(_ count: Int) async -> [(String, [String: [String]])] {
+            let deadline = Date().addingTimeInterval(2)
+            while answeredSessionIDs.count < count, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            return answeredSessionIDs
         }
 
         func userInputs() -> [(SessionProvider, String, String)] {
@@ -159,9 +183,8 @@ final class SessionMonitorNativeRuntimeTests: XCTestCase {
         ))
 
         monitor.approvePermission(sessionId: sessionID, forSession: true)
-        try? await Task.sleep(nanoseconds: 100_000_000)
 
-        let approved = await runtimeCoordinator.approvals()
+        let approved = await runtimeCoordinator.waitForApprovalCount(1)
         XCTAssertEqual(approved.count, 1)
         XCTAssertEqual(approved.first?.0, sessionID)
         XCTAssertEqual(approved.first?.1, true)
@@ -257,8 +280,7 @@ final class SessionMonitorNativeRuntimeTests: XCTestCase {
         )
 
         monitor.answerIntervention(sessionId: sessionID, answers: ["mode": ["自动"]])
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        let answers = await runtimeCoordinator.answers()
+        let answers = await runtimeCoordinator.waitForAnswerCount(1)
         XCTAssertEqual(answers.count, 1)
         XCTAssertEqual(answers.first?.0, sessionID)
         XCTAssertEqual(answers.first?.1["mode"], ["自动"])
@@ -283,8 +305,7 @@ final class SessionMonitorNativeRuntimeTests: XCTestCase {
         ))
 
         monitor.denyPermission(sessionId: sessionID, reason: "nope")
-        try? await Task.sleep(nanoseconds: 100_000_000)
-        let denials = await runtimeCoordinator.denials()
+        let denials = await runtimeCoordinator.waitForDenialCount(1)
         XCTAssertEqual(denials, [sessionID])
 
         await SessionStore.shared.process(.sessionArchived(sessionId: sessionID))

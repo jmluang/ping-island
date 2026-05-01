@@ -30,6 +30,46 @@ final class SnapshotRecorder {
     }
 }
 
+private actor ProcessIntegrationTestGate {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        if !isLocked {
+            isLocked = true
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        if waiters.isEmpty {
+            isLocked = false
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
+}
+
+private let processIntegrationTestGate = ProcessIntegrationTestGate()
+
+func withProcessIntegrationTestIsolation<T>(
+    _ body: () async throws -> T
+) async rethrows -> T {
+    await processIntegrationTestGate.acquire()
+    do {
+        let result = try await body()
+        await processIntegrationTestGate.release()
+        return result
+    } catch {
+        await processIntegrationTestGate.release()
+        throw error
+    }
+}
+
 func withRunningSocketServer<T>(
     socketPath: String,
     sessionStore: SessionStore,
