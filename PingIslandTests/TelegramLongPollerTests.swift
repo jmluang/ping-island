@@ -80,6 +80,92 @@ final class TelegramLongPollerTests: XCTestCase {
         XCTAssertFalse(runningAfter401)
     }
 
+    func testTransportFailureBacksOffThenRetries() async {
+        let clock = FakeTelegramLongPollClock()
+        let client = FakeTelegramUpdatesClient(results: [
+            .failure(.transport("offline-1")),
+            .failure(.transport("offline-2")),
+            .failure(.transport("offline-3")),
+            .success([
+                makeUpdate(200)
+            ])
+        ])
+        let handledUpdates = UpdateCollector()
+        let poller = TelegramLongPoller(
+            client: client,
+            stateStore: FakeTelegramStateStore(),
+            sleep: { await clock.sleep(for: $0) }
+        )
+
+        await poller.start { update in
+            await handledUpdates.append(update)
+        }
+        await handledUpdates.waitForCount(1)
+        await poller.stop()
+
+        let sleepDurations = await clock.sleepDurations()
+        XCTAssertEqual(sleepDurations, [1, 2, 4])
+        let updateIds = await handledUpdates.updateIds
+        XCTAssertEqual(updateIds, [200])
+    }
+
+    func testBackoffCapsAt30Seconds() async {
+        let clock = FakeTelegramLongPollClock()
+        let client = FakeTelegramUpdatesClient(results: [
+            .failure(.transport("offline-1")),
+            .failure(.transport("offline-2")),
+            .failure(.transport("offline-3")),
+            .failure(.transport("offline-4")),
+            .failure(.transport("offline-5")),
+            .failure(.transport("offline-6")),
+            .success([
+                makeUpdate(201)
+            ])
+        ])
+        let handledUpdates = UpdateCollector()
+        let poller = TelegramLongPoller(
+            client: client,
+            stateStore: FakeTelegramStateStore(),
+            sleep: { await clock.sleep(for: $0) }
+        )
+
+        await poller.start { update in
+            await handledUpdates.append(update)
+        }
+        await handledUpdates.waitForCount(1)
+        await poller.stop()
+
+        let sleepDurations = await clock.sleepDurations()
+        XCTAssertEqual(sleepDurations, [1, 2, 4, 8, 16, 30])
+    }
+
+    func testRateLimitedResponseHonorsRetryAfter() async {
+        let clock = FakeTelegramLongPollClock()
+        let client = FakeTelegramUpdatesClient(results: [
+            .failure(.rateLimited(retryAfterSeconds: 7)),
+            .success([
+                makeUpdate(202)
+            ])
+        ])
+        let handledUpdates = UpdateCollector()
+        let poller = TelegramLongPoller(
+            client: client,
+            stateStore: FakeTelegramStateStore(),
+            sleep: { await clock.sleep(for: $0) }
+        )
+
+        await poller.start { update in
+            await handledUpdates.append(update)
+        }
+        await handledUpdates.waitForCount(1)
+        await poller.stop()
+
+        let sleepDurations = await clock.sleepDurations()
+        XCTAssertEqual(sleepDurations, [7])
+        let updateIds = await handledUpdates.updateIds
+        XCTAssertEqual(updateIds, [202])
+    }
+
     private func makeUpdate(_ updateId: Int64) -> TelegramUpdate {
         TelegramUpdate(updateId: updateId, message: nil, callbackQuery: nil)
     }
@@ -87,6 +173,7 @@ final class TelegramLongPollerTests: XCTestCase {
 
 private actor UpdateCollector {
     private var updates: [TelegramUpdate] = []
+    private var waiters: [(Int, CheckedContinuation<Void, Never>)] = []
 
     var updateIds: [Int64] {
         updates.map(\.updateId)
@@ -94,6 +181,37 @@ private actor UpdateCollector {
 
     func append(_ update: TelegramUpdate) {
         updates.append(update)
+        resumeSatisfiedWaiters()
+    }
+
+    func waitForCount(_ expected: Int) async {
+        if updates.count >= expected {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append((expected, continuation))
+        }
+    }
+
+    private func resumeSatisfiedWaiters() {
+        let ready = waiters.filter { updates.count >= $0.0 }
+        waiters.removeAll { updates.count >= $0.0 }
+        for waiter in ready {
+            waiter.1.resume()
+        }
+    }
+}
+
+private actor FakeTelegramLongPollClock {
+    private var sleeps: [TimeInterval] = []
+
+    func sleep(for duration: TimeInterval) {
+        sleeps.append(duration)
+    }
+
+    func sleepDurations() -> [TimeInterval] {
+        sleeps
     }
 }
 

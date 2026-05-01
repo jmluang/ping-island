@@ -4,17 +4,23 @@ actor TelegramLongPoller {
     private let client: TelegramUpdatesClient
     private let stateStore: TelegramStateStoring
     private let onInvalidToken: @Sendable () async -> Void
+    private let sleep: @Sendable (TimeInterval) async -> Void
 
     private var pollingTask: Task<Void, Never>?
 
     init(
         client: TelegramUpdatesClient,
         stateStore: TelegramStateStoring = TelegramStateStore(),
-        onInvalidToken: @escaping @Sendable () async -> Void = {}
+        onInvalidToken: @escaping @Sendable () async -> Void = {},
+        sleep: @escaping @Sendable (TimeInterval) async -> Void = { duration in
+            guard duration > 0 else { return }
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+        }
     ) {
         self.client = client
         self.stateStore = stateStore
         self.onInvalidToken = onInvalidToken
+        self.sleep = sleep
     }
 
     var isRunning: Bool {
@@ -38,6 +44,7 @@ actor TelegramLongPoller {
 
     private func poll(handler: @escaping @Sendable (TelegramUpdate) async -> Void) async {
         var offset = loadOffset()
+        var retryDelay: TimeInterval = 1
 
         while !Task.isCancelled {
             let result = await client.getUpdates(
@@ -48,6 +55,8 @@ actor TelegramLongPoller {
 
             switch result {
             case .success(let updates):
+                retryDelay = 1
+
                 if let nextOffset = updates.map(\.updateId).max().map({ $0 + 1 }) {
                     offset = nextOffset
                     saveOffset(nextOffset)
@@ -61,6 +70,13 @@ actor TelegramLongPoller {
                     pollingTask = nil
                     await onInvalidToken()
                     return
+                }
+                let delay = error.retryDelay(defaultDelay: retryDelay)
+                await sleep(delay)
+                if error.isRateLimited {
+                    retryDelay = 1
+                } else {
+                    retryDelay = min(retryDelay * 2, 30)
                 }
             }
         }
@@ -81,6 +97,13 @@ actor TelegramLongPoller {
 }
 
 private extension TelegramAPIError {
+    var isRateLimited: Bool {
+        if case .rateLimited = self {
+            return true
+        }
+        return false
+    }
+
     var isUnauthorized: Bool {
         switch self {
         case .http(status: 401, description: _),
@@ -88,6 +111,15 @@ private extension TelegramAPIError {
             return true
         case .http, .rateLimited, .decoding, .botApi, .transport:
             return false
+        }
+    }
+
+    func retryDelay(defaultDelay: TimeInterval) -> TimeInterval {
+        switch self {
+        case .rateLimited(let retryAfterSeconds):
+            return retryAfterSeconds
+        case .http, .decoding, .botApi, .transport:
+            return defaultDelay
         }
     }
 }
