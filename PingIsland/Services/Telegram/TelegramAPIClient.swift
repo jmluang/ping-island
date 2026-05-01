@@ -8,6 +8,7 @@ extension URLSession: URLSessionProtocol {}
 
 enum TelegramAPIError: Error, Equatable {
     case http(status: Int, description: String)
+    case rateLimited(retryAfterSeconds: TimeInterval)
     case decoding
     case botApi(errorCode: Int, description: String)
     case transport(String)
@@ -86,12 +87,22 @@ private struct TelegramEnvelope<T: Decodable>: Decodable {
     let result: T?
     let errorCode: Int?
     let description: String?
+    let parameters: TelegramResponseParameters?
 
     enum CodingKeys: String, CodingKey {
         case ok
         case result
         case description
+        case parameters
         case errorCode = "error_code"
+    }
+}
+
+private struct TelegramResponseParameters: Decodable {
+    let retryAfter: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case retryAfter = "retry_after"
     }
 }
 
@@ -239,11 +250,17 @@ final class TelegramAPIClient {
             return .failure(.transport("non-http response"))
         }
 
+        let envelope = try? JSONDecoder().decode(TelegramEnvelope<Response>.self, from: data)
+
+        if httpResponse.statusCode == 429, let retryAfter = envelope?.parameters?.retryAfter {
+            return .failure(.rateLimited(retryAfterSeconds: TimeInterval(retryAfter)))
+        }
+
         guard 200..<300 ~= httpResponse.statusCode else {
             return .failure(.http(status: httpResponse.statusCode, description: String(data: data, encoding: .utf8) ?? ""))
         }
 
-        guard let envelope = try? JSONDecoder().decode(TelegramEnvelope<Response>.self, from: data) else {
+        guard let envelope else {
             return .failure(.decoding)
         }
 

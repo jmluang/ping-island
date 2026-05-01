@@ -142,6 +142,19 @@ final class TelegramAPIClientTests: XCTestCase {
         XCTAssertEqual(json["timeout"] as? Int, 30)
         XCTAssertEqual(json["allowed_updates"] as? [String], ["message", "callback_query"])
     }
+
+    func testRateLimitedResponseDecodesRetryAfter() async throws {
+        let session = FakeURLSession()
+        session.responses["/sendMessage"] = .success(
+            body: #"{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 3","parameters":{"retry_after":3}}"#,
+            status: 429
+        )
+        let client = TelegramAPIClient(token: "TKN", session: session)
+
+        let result = await client.sendMessage(chatId: 7, text: "hello")
+
+        XCTAssertEqual(result, .failure(.rateLimited(retryAfterSeconds: 3)))
+    }
 }
 
 final class FakeURLSession: URLSessionProtocol, @unchecked Sendable {
