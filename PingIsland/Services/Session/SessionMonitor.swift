@@ -23,6 +23,7 @@ class SessionMonitor: ObservableObject {
     }
 
     private let runtimeCoordinator: any RuntimeCoordinating
+    private let actionHub: InterventionActionHub
     private var cancellables = Set<AnyCancellable>()
     private var hasStarted = false
     private var allSessions: [SessionState] = []
@@ -30,9 +31,11 @@ class SessionMonitor: ObservableObject {
 
     init(
         runtimeCoordinator: any RuntimeCoordinating = RuntimeCoordinator.shared,
-        observeSharedState: Bool = true
+        observeSharedState: Bool = true,
+        actionHub: InterventionActionHub? = nil
     ) {
         self.runtimeCoordinator = runtimeCoordinator
+        self.actionHub = actionHub ?? .shared
         guard observeSharedState else { return }
         let shouldRefreshUsage = !Self.isRunningUnderXCTest
         if shouldRefreshUsage {
@@ -289,67 +292,112 @@ class SessionMonitor: ObservableObject {
         source: InterventionResponse.Source = .mac
     ) {
         Task {
-            guard let session = await SessionStore.shared.session(for: sessionId) else {
-                return
-            }
+            _ = await performApprovePermission(
+                sessionId: sessionId,
+                forSession: forSession,
+                source: source
+            )
+        }
+    }
 
-            if session.ingress == .nativeRuntime {
-                try? await runtimeCoordinator.approveSession(
+    func performApprovePermission(
+        sessionId: String,
+        forSession: Bool,
+        source: InterventionResponse.Source
+    ) async -> Result<Void, InterventionActionDispatchError> {
+        guard let session = await SessionStore.shared.session(for: sessionId) else {
+            return .failure(.actionNotHandled)
+        }
+
+        let responseInterventionId = responseInterventionId(for: session)
+
+        if session.ingress == .nativeRuntime {
+            do {
+                try await runtimeCoordinator.approveSession(
                     provider: session.provider,
                     sessionID: session.sessionId,
                     forSession: forSession
                 )
-                return
-            }
-
-            let shouldRespondToHookPermission = session.intervention?.metadata["source"] == "codex_hook_permission"
-                && session.activePermission != nil
-
-            if session.ingress == .codexAppServer, !shouldRespondToHookPermission {
-                let resolvedSessionId = await SessionStore.shared.resolvedCodexSessionId(for: sessionId)
-                await CodexAppServerMonitor.shared.approve(threadId: resolvedSessionId, forSession: forSession)
-                return
-            }
-
-            guard let permission = session.activePermission else { return }
-
-            if forSession, session.scopedApprovalAction == .autoApprove {
-                await SessionStore.shared.process(
-                    .permissionAutoApprovalChanged(sessionId: sessionId, isEnabled: true)
+                publishResponse(
+                    session: session,
+                    interventionId: responseInterventionId,
+                    decision: forSession ? .approveForSession : .approveOnce,
+                    source: source
                 )
-                if session.ingress == .remoteBridge {
-                    RemoteConnectorManager.shared.respondToPermission(
-                        toolUseId: permission.toolUseId,
-                        decision: "approveForSession"
-                    )
-                } else {
-                    HookSocketServer.shared.respondToPermission(
-                        toolUseId: permission.toolUseId,
-                        decision: "approveForSession"
-                    )
-                }
-                await SessionStore.shared.process(
-                    .permissionApproved(sessionId: sessionId, toolUseId: permission.toolUseId)
-                )
-                return
+                return .success(())
+            } catch {
+                return .failure(.actionNotHandled)
             }
+        }
 
+        let shouldRespondToHookPermission = session.intervention?.metadata["source"] == "codex_hook_permission"
+            && session.activePermission != nil
+
+        if session.ingress == .codexAppServer, !shouldRespondToHookPermission {
+            let resolvedSessionId = await SessionStore.shared.resolvedCodexSessionId(for: sessionId)
+            await CodexAppServerMonitor.shared.approve(threadId: resolvedSessionId, forSession: forSession)
+            publishResponse(
+                session: session,
+                interventionId: responseInterventionId,
+                decision: forSession ? .approveForSession : .approveOnce,
+                source: source
+            )
+            return .success(())
+        }
+
+        guard let permission = session.activePermission else {
+            return .failure(.actionNotHandled)
+        }
+
+        if forSession, session.scopedApprovalAction == .autoApprove {
+            await SessionStore.shared.process(
+                .permissionAutoApprovalChanged(sessionId: sessionId, isEnabled: true)
+            )
             if session.ingress == .remoteBridge {
                 RemoteConnectorManager.shared.respondToPermission(
                     toolUseId: permission.toolUseId,
-                    decision: "allow"
+                    decision: "approveForSession"
                 )
             } else {
                 HookSocketServer.shared.respondToPermission(
                     toolUseId: permission.toolUseId,
-                    decision: "allow"
+                    decision: "approveForSession"
                 )
             }
-
             await SessionStore.shared.process(
                 .permissionApproved(sessionId: sessionId, toolUseId: permission.toolUseId)
             )
+            publishResponse(
+                session: session,
+                interventionId: responseInterventionId,
+                decision: .approveForSession,
+                source: source
+            )
+            return .success(())
         }
+
+        if session.ingress == .remoteBridge {
+            RemoteConnectorManager.shared.respondToPermission(
+                toolUseId: permission.toolUseId,
+                decision: "allow"
+            )
+        } else {
+            HookSocketServer.shared.respondToPermission(
+                toolUseId: permission.toolUseId,
+                decision: "allow"
+            )
+        }
+
+        await SessionStore.shared.process(
+            .permissionApproved(sessionId: sessionId, toolUseId: permission.toolUseId)
+        )
+        publishResponse(
+            session: session,
+            interventionId: responseInterventionId,
+            decision: .approveOnce,
+            source: source
+        )
+        return .success(())
     }
 
     func denyPermission(
@@ -358,48 +406,83 @@ class SessionMonitor: ObservableObject {
         source: InterventionResponse.Source = .mac
     ) {
         Task {
-            guard let session = await SessionStore.shared.session(for: sessionId) else {
-                return
-            }
+            _ = await performDenyPermission(sessionId: sessionId, reason: reason, source: source)
+        }
+    }
 
-            if session.ingress == .nativeRuntime {
-                try? await runtimeCoordinator.denySession(
+    func performDenyPermission(
+        sessionId: String,
+        reason: String?,
+        source: InterventionResponse.Source
+    ) async -> Result<Void, InterventionActionDispatchError> {
+        guard let session = await SessionStore.shared.session(for: sessionId) else {
+            return .failure(.actionNotHandled)
+        }
+
+        let responseInterventionId = responseInterventionId(for: session)
+
+        if session.ingress == .nativeRuntime {
+            do {
+                try await runtimeCoordinator.denySession(
                     provider: session.provider,
                     sessionID: session.sessionId,
                     reason: reason
                 )
-                return
-            }
-
-            let shouldRespondToHookPermission = session.intervention?.metadata["source"] == "codex_hook_permission"
-                && session.activePermission != nil
-
-            if session.ingress == .codexAppServer, !shouldRespondToHookPermission {
-                let resolvedSessionId = await SessionStore.shared.resolvedCodexSessionId(for: sessionId)
-                await CodexAppServerMonitor.shared.deny(threadId: resolvedSessionId)
-                return
-            }
-
-            guard let permission = session.activePermission else { return }
-
-            if session.ingress == .remoteBridge {
-                RemoteConnectorManager.shared.respondToPermission(
-                    toolUseId: permission.toolUseId,
-                    decision: "deny",
-                    reason: reason
+                publishResponse(
+                    session: session,
+                    interventionId: responseInterventionId,
+                    decision: .deny(reason: reason),
+                    source: source
                 )
-            } else {
-                HookSocketServer.shared.respondToPermission(
-                    toolUseId: permission.toolUseId,
-                    decision: "deny",
-                    reason: reason
-                )
+                return .success(())
+            } catch {
+                return .failure(.actionNotHandled)
             }
+        }
 
-            await SessionStore.shared.process(
-                .permissionDenied(sessionId: sessionId, toolUseId: permission.toolUseId, reason: reason)
+        let shouldRespondToHookPermission = session.intervention?.metadata["source"] == "codex_hook_permission"
+            && session.activePermission != nil
+
+        if session.ingress == .codexAppServer, !shouldRespondToHookPermission {
+            let resolvedSessionId = await SessionStore.shared.resolvedCodexSessionId(for: sessionId)
+            await CodexAppServerMonitor.shared.deny(threadId: resolvedSessionId)
+            publishResponse(
+                session: session,
+                interventionId: responseInterventionId,
+                decision: .deny(reason: reason),
+                source: source
+            )
+            return .success(())
+        }
+
+        guard let permission = session.activePermission else {
+            return .failure(.actionNotHandled)
+        }
+
+        if session.ingress == .remoteBridge {
+            RemoteConnectorManager.shared.respondToPermission(
+                toolUseId: permission.toolUseId,
+                decision: "deny",
+                reason: reason
+            )
+        } else {
+            HookSocketServer.shared.respondToPermission(
+                toolUseId: permission.toolUseId,
+                decision: "deny",
+                reason: reason
             )
         }
+
+        await SessionStore.shared.process(
+            .permissionDenied(sessionId: sessionId, toolUseId: permission.toolUseId, reason: reason)
+        )
+        publishResponse(
+            session: session,
+            interventionId: responseInterventionId,
+            decision: .deny(reason: reason),
+            source: source
+        )
+        return .success(())
     }
 
     func answerIntervention(
@@ -408,60 +491,109 @@ class SessionMonitor: ObservableObject {
         source: InterventionResponse.Source = .mac
     ) {
         Task {
-            guard let session = await SessionStore.shared.session(for: sessionId) else {
-                return
-            }
+            _ = await performAnswerIntervention(sessionId: sessionId, answers: answers, source: source)
+        }
+    }
 
-            if session.ingress == .nativeRuntime {
-                try? await runtimeCoordinator.answerSession(
+    func performAnswerIntervention(
+        sessionId: String,
+        answers: [String: [String]],
+        source: InterventionResponse.Source
+    ) async -> Result<Void, InterventionActionDispatchError> {
+        guard let session = await SessionStore.shared.session(for: sessionId) else {
+            return .failure(.actionNotHandled)
+        }
+
+        if session.ingress == .nativeRuntime {
+            do {
+                try await runtimeCoordinator.answerSession(
                     provider: session.provider,
                     sessionID: session.sessionId,
                     answers: answers
                 )
-                return
-            }
-
-            if session.ingress == .codexAppServer {
-                let resolvedSessionId = await SessionStore.shared.resolvedCodexSessionId(for: sessionId)
-                await CodexAppServerMonitor.shared.answer(threadId: resolvedSessionId, answers: answers)
-                return
-            }
-
-            guard let intervention = session.intervention,
-                  intervention.kind == .question,
-                  let updatedInput = updatedHookToolInput(
-                    for: intervention,
-                    answers: answers,
-                    clientInfo: session.clientInfo
-                  )
-            else {
-                return
-            }
-
-            // 使用正确的 toolUseId：优先使用 metadata 中保存的原始值
-            let toolUseId = intervention.metadata["originalToolUseId"] ?? intervention.id
-            if session.ingress == .remoteBridge {
-                RemoteConnectorManager.shared.respondToIntervention(
-                    toolUseId: toolUseId,
-                    decision: "answer",
-                    updatedInput: updatedInput
+                publishResponse(
+                    session: session,
+                    interventionId: responseInterventionId(for: session),
+                    decision: .answer(answers: answers),
+                    source: source
                 )
-            } else {
-                HookSocketServer.shared.respondToIntervention(
-                    toolUseId: toolUseId,
-                    decision: "answer",
-                    updatedInput: updatedInput
-                )
+                return .success(())
+            } catch {
+                return .failure(.actionNotHandled)
             }
+        }
 
-            await SessionStore.shared.process(
-                .interventionResolved(
-                    sessionId: sessionId,
-                    nextPhase: .processing,
-                    submittedAnswers: answers
-                )
+        if session.ingress == .codexAppServer {
+            let resolvedSessionId = await SessionStore.shared.resolvedCodexSessionId(for: sessionId)
+            await CodexAppServerMonitor.shared.answer(threadId: resolvedSessionId, answers: answers)
+            publishResponse(
+                session: session,
+                interventionId: responseInterventionId(for: session),
+                decision: .answer(answers: answers),
+                source: source
+            )
+            return .success(())
+        }
+
+        guard let intervention = session.intervention,
+              intervention.kind == .question,
+              let updatedInput = updatedHookToolInput(
+                for: intervention,
+                answers: answers,
+                clientInfo: session.clientInfo
+              )
+        else {
+            return .failure(.actionNotHandled)
+        }
+
+        let toolUseId = intervention.metadata["originalToolUseId"] ?? intervention.id
+        if session.ingress == .remoteBridge {
+            RemoteConnectorManager.shared.respondToIntervention(
+                toolUseId: toolUseId,
+                decision: "answer",
+                updatedInput: updatedInput
+            )
+        } else {
+            HookSocketServer.shared.respondToIntervention(
+                toolUseId: toolUseId,
+                decision: "answer",
+                updatedInput: updatedInput
             )
         }
+
+        await SessionStore.shared.process(
+            .interventionResolved(
+                sessionId: sessionId,
+                nextPhase: .processing,
+                submittedAnswers: answers
+            )
+        )
+        publishResponse(
+            session: session,
+            interventionId: intervention.id,
+            decision: .answer(answers: answers),
+            source: source
+        )
+        return .success(())
+    }
+
+    private func responseInterventionId(for session: SessionState) -> String {
+        session.activePermission?.toolUseId ?? session.intervention?.id ?? session.sessionId
+    }
+
+    private func publishResponse(
+        session: SessionState,
+        interventionId: String,
+        decision: InterventionResponse.Decision,
+        source: InterventionResponse.Source
+    ) {
+        actionHub.publish(.init(
+            sessionId: session.sessionId,
+            interventionId: interventionId,
+            decision: decision,
+            source: source,
+            timestamp: Date()
+        ))
     }
 
     func loadCodexThread(sessionId: String) async throws -> CodexThreadSnapshot {
@@ -987,6 +1119,8 @@ class SessionMonitor: ObservableObject {
         }
     }
 }
+
+extension SessionMonitor: InterventionActionDispatching {}
 
 // MARK: - Interrupt Watcher Delegate
 
