@@ -65,6 +65,41 @@ final class TelegramOutboundObserverTests: XCTestCase {
         XCTAssertTrue(client.sentMessages.isEmpty)
     }
 
+    func testProcessSnapshotEmitsCompletionAfterCompletedReadyTransition() async {
+        let client = FakeTelegramMessagingClient()
+        let observer = makeObserver(client: client)
+        let processing = makeSession(phase: .processing)
+        let completed = makeSession(
+            phase: .waitingForInput,
+            chatItems: [
+                ChatHistoryItem(id: "assistant-1", type: .assistant("Done."), timestamp: Date(timeIntervalSince1970: 2))
+            ]
+        )
+
+        await observer.processSnapshot([processing])
+        await observer.processSnapshot([completed])
+
+        XCTAssertEqual(client.sentMessages.count, 1)
+        XCTAssertEqual(client.sentMessages.first?.replyMarkup, nil)
+        XCTAssertEqual(client.sentMessages.first?.text.contains("Task completed"), true)
+        XCTAssertEqual(client.sentMessages.first?.text.contains("Done."), true)
+    }
+
+    func testProcessSnapshotDoesNotReplayExistingCompletionOnFirstSnapshot() async {
+        let client = FakeTelegramMessagingClient()
+        let observer = makeObserver(client: client)
+        let completed = makeSession(
+            phase: .waitingForInput,
+            chatItems: [
+                ChatHistoryItem(id: "assistant-1", type: .assistant("Done."), timestamp: Date(timeIntervalSince1970: 2))
+            ]
+        )
+
+        await observer.processSnapshot([completed])
+
+        XCTAssertTrue(client.sentMessages.isEmpty)
+    }
+
     func testRemovedAttentionWithoutRecentResponseEditsWithdrawnAndDropsRegistries() async throws {
         let client = FakeTelegramMessagingClient()
         let stateStore = InMemoryTelegramStateStore()
@@ -188,7 +223,8 @@ final class TelegramOutboundObserverTests: XCTestCase {
 
     private func makeSession(
         intervention: SessionIntervention? = nil,
-        phase: SessionPhase
+        phase: SessionPhase,
+        chatItems: [ChatHistoryItem] = []
     ) -> SessionState {
         SessionState(
             sessionId: "session-1",
@@ -196,7 +232,8 @@ final class TelegramOutboundObserverTests: XCTestCase {
             projectName: "ping-island",
             provider: .claude,
             intervention: intervention,
-            phase: phase
+            phase: phase,
+            chatItems: chatItems
         )
     }
 

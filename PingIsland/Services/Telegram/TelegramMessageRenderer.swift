@@ -3,6 +3,7 @@ import Foundation
 enum TelegramAttentionPayload: Equatable {
     case approval(id: String, permission: PermissionContext?, intervention: SessionIntervention?)
     case question(intervention: SessionIntervention)
+    case completion
 
     var category: TelegramEventCategory {
         switch self {
@@ -10,6 +11,8 @@ enum TelegramAttentionPayload: Equatable {
             return .permission
         case .question:
             return .question
+        case .completion:
+            return .completion
         }
     }
 
@@ -87,6 +90,8 @@ enum TelegramMessageRenderer {
                 issuedAt: issuedAt,
                 tokenProvider: tokenProvider
             )
+        case .completion:
+            return renderStatus(text: completionText(for: session))
         }
     }
 
@@ -255,6 +260,55 @@ enum TelegramMessageRenderer {
         }
 
         return "📝 此问题需要自由文本回答，请在 Mac 上处理"
+    }
+
+    private static func renderStatus(text: String) -> TelegramRenderedMessage {
+        TelegramRenderedMessage(
+            text: TelegramText.truncate(text, limit: 4096),
+            replyMarkup: nil,
+            callbackResolutions: [:]
+        )
+    }
+
+    private static func completionText(for session: SessionState) -> String {
+        var lines = [
+            "Task completed",
+            "Agent: \(session.messageBadgeDisplayName)",
+            "Project: \(session.projectName)",
+            "CWD: \(session.cwd)",
+            "Session: \(session.sessionId)"
+        ]
+
+        if let preview = latestAssistantPreview(for: session) {
+            lines.append("")
+            lines.append("Result:")
+            lines.append(preview)
+        }
+
+        return lines.joined(separator: "\n")
+    }
+
+    private static func latestAssistantPreview(for session: SessionState) -> String? {
+        for item in session.chatItems.reversed() {
+            if case .assistant(let text) = item.type {
+                return sanitizedPreview(text)
+            }
+        }
+
+        guard session.lastMessageRole == "assistant" else {
+            return nil
+        }
+
+        return sanitizedPreview(session.lastMessage)
+    }
+
+    private static func sanitizedPreview(_ text: String?) -> String? {
+        guard let text else { return nil }
+        let collapsed = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return collapsed.isEmpty ? nil : collapsed
     }
 
     private struct ApprovalButton {

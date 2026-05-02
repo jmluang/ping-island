@@ -23,6 +23,8 @@ final class TelegramOutboundObserver {
 
     private var lastKeys: Set<String> = []
     private var recentResponses: [String: Date] = [:]
+    private var hasPrimedStatusTransitions = false
+    private var previousCompletedIds: Set<String> = []
     private var cancellables: Set<AnyCancellable> = []
 
     init(
@@ -72,6 +74,8 @@ final class TelegramOutboundObserver {
         cancellables.removeAll()
         lastKeys.removeAll()
         recentResponses.removeAll()
+        hasPrimedStatusTransitions = false
+        previousCompletedIds.removeAll()
     }
 
     func recordResponse(_ response: InterventionResponse) {
@@ -124,6 +128,7 @@ final class TelegramOutboundObserver {
 
     func processSnapshot(_ sessions: [SessionState]) async {
         pruneRecentResponses()
+        await emitStatusNotifications(from: sessions)
 
         let renderables = Dictionary(uniqueKeysWithValues: sessions.compactMap { session -> (String, RenderableAttention)? in
             guard let renderable = TelegramAttentionPayload.renderable(for: session) else {
@@ -157,6 +162,64 @@ final class TelegramOutboundObserver {
         }
 
         lastKeys = currentKeys
+    }
+
+    private func emitStatusNotifications(from sessions: [SessionState]) async {
+        let completedSessions = sessions.filter(isCompletedReadySession)
+        let completedIds = Set(completedSessions.map(\.stableId))
+
+        guard hasPrimedStatusTransitions else {
+            hasPrimedStatusTransitions = true
+            previousCompletedIds = completedIds
+            return
+        }
+
+        if categoryEnabled(.completion) {
+            for session in completedSessions where !previousCompletedIds.contains(session.stableId) {
+                await sendStatus(session: session, payload: .completion)
+            }
+        }
+
+        previousCompletedIds = completedIds
+    }
+
+    private func sendStatus(session: SessionState, payload: TelegramAttentionPayload) async {
+        let rendered = TelegramMessageRenderer.render(
+            session: session,
+            payload: payload,
+            issuedAt: now(),
+            tokenProvider: tokenProvider
+        )
+
+        await rateLimitQueue.enqueue(chatId: chatId) { [chatId, client] in
+            switch await client.sendMessage(
+                chatId: chatId,
+                text: rendered.text,
+                replyMarkup: rendered.replyMarkup,
+                disableNotification: false
+            ) {
+            case .success:
+                return .success(())
+            case .failure(let error):
+                return .failure(error)
+            }
+        }
+    }
+
+    private func isCompletedReadySession(_ session: SessionState) -> Bool {
+        guard session.phase == .waitingForInput else { return false }
+        guard session.intervention == nil else { return false }
+
+        for item in session.chatItems.reversed() {
+            switch item.type {
+            case .assistant:
+                return true
+            case .user, .thinking, .toolCall, .interrupted:
+                return false
+            }
+        }
+
+        return session.lastMessageRole == "assistant"
     }
 
     private func send(_ renderable: RenderableAttention) async {
