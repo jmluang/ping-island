@@ -55,7 +55,7 @@ final class TelegramCallbackGarbageCollector: TelegramCallbackGarbageCollecting 
                     switch await client.editMessageText(
                         chatId: entry.chatId,
                         messageId: entry.messageId,
-                        text: "⏱ Expired",
+                        text: TelegramL10n.string("Telegram.Message.Expired"),
                         replyMarkup: nil
                     ) {
                     case .success:

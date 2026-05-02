@@ -41,7 +41,7 @@ final class TelegramRestartSweeper: TelegramRestartSweeping {
                 switch await client.editMessageText(
                     chatId: entry.chatId,
                     messageId: entry.messageId,
-                    text: "⚠️ Ping Island restarted · please confirm in the notch",
+                    text: TelegramL10n.string("Telegram.Message.RestartedConfirmInNotch"),
                     replyMarkup: nil
                 ) {
                 case .success:

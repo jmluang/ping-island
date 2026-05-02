@@ -27,7 +27,9 @@ final class TelegramRestartSweepTests: XCTestCase {
         await sweeper.sweep(activeSessions: [activeSession])
 
         XCTAssertEqual(client.editedMessages.map(\.messageId), [222])
-        XCTAssertEqual(client.editedMessages.map(\.text), ["⚠️ Ping Island restarted · please confirm in the notch"])
+        XCTAssertEqual(client.editedMessages.map(\.text), [
+            TelegramL10n.string("Telegram.Message.RestartedConfirmInNotch")
+        ])
         let state = try stateStore.load()
         XCTAssertEqual(Set(state.messages.keys), [
             InterventionKey.make(sessionId: "active-session", interventionId: "active-tool")

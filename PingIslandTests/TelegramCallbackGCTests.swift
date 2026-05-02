@@ -16,7 +16,9 @@ final class TelegramCallbackGCTests: XCTestCase {
         await collector.collect(now: Date(timeIntervalSince1970: 1_775_000_000))
 
         XCTAssertEqual(client.editedMessages.map(\.messageId), [111])
-        XCTAssertEqual(client.editedMessages.map(\.text), ["⏱ Expired"])
+        XCTAssertEqual(client.editedMessages.map(\.text), [
+            TelegramL10n.string("Telegram.Message.Expired")
+        ])
         let state = try stateStore.load()
         XCTAssertEqual(Set(state.messages.keys), [
             InterventionKey.make(sessionId: "fresh-session", interventionId: "fresh-tool")

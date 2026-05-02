@@ -149,23 +149,23 @@ enum TelegramMessageRenderer {
         let toolName = permission?.toolName
             ?? session.pendingToolName
             ?? intervention?.title
-            ?? "Permission"
+            ?? TelegramL10n.string("Telegram.Message.PermissionFallback")
         let input = permission?.formattedInput
             ?? session.pendingToolInput
             ?? intervention?.message
 
         var lines = [
-            "Approval requested",
-            "Agent: \(session.messageBadgeDisplayName)",
-            "Project: \(session.projectName)",
-            "Tool: \(toolName)",
-            "CWD: \(session.cwd)",
-            "Session: \(session.sessionId)"
+            TelegramL10n.string("Telegram.Message.ApprovalRequested"),
+            TelegramL10n.format("Telegram.Message.Field.Agent", session.messageBadgeDisplayName),
+            TelegramL10n.format("Telegram.Message.Field.Project", session.projectName),
+            TelegramL10n.format("Telegram.Message.Field.Tool", toolName),
+            TelegramL10n.format("Telegram.Message.Field.CWD", session.cwd),
+            TelegramL10n.format("Telegram.Message.Field.Session", session.sessionId)
         ]
 
         if let input, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             lines.append("")
-            lines.append("Input:")
+            lines.append(TelegramL10n.string("Telegram.Message.Field.Input"))
             lines.append(input)
         }
 
@@ -174,13 +174,13 @@ enum TelegramMessageRenderer {
 
     private static func approvalActions(for session: SessionState) -> [ApprovalButton] {
         var buttons = [
-            ApprovalButton(title: "Allow Once", callbackAction: "allow_once", action: .allowOnce),
-            ApprovalButton(title: "Deny", callbackAction: "deny", action: .deny)
+            ApprovalButton(title: TelegramL10n.string("Telegram.Button.AllowOnce"), callbackAction: "allow_once", action: .allowOnce),
+            ApprovalButton(title: TelegramL10n.string("Telegram.Button.Deny"), callbackAction: "deny", action: .deny)
         ]
 
         if session.provider == .codex, session.scopedApprovalAction != nil {
             buttons.append(ApprovalButton(
-                title: "Allow Session",
+                title: TelegramL10n.string("Telegram.Button.AllowSession"),
                 callbackAction: "allow_session",
                 action: .allowSession
             ))
@@ -238,38 +238,38 @@ enum TelegramMessageRenderer {
         question: SessionInterventionQuestion
     ) -> String {
         var lines = [
-            "Question requested",
-            "Agent: \(session.messageBadgeDisplayName)",
-            "Project: \(session.projectName)",
-            "Title: \(intervention.title)",
-            "Question: \(question.prompt)"
+            TelegramL10n.string("Telegram.Message.QuestionRequested"),
+            TelegramL10n.format("Telegram.Message.Field.Agent", session.messageBadgeDisplayName),
+            TelegramL10n.format("Telegram.Message.Field.Project", session.projectName),
+            TelegramL10n.format("Telegram.Message.Field.Title", intervention.title),
+            TelegramL10n.format("Telegram.Message.Field.Question", question.prompt)
         ]
 
         if let detail = question.detail ?? (!intervention.message.isEmpty ? intervention.message : nil),
            !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            lines.append("Details: \(detail)")
+            lines.append(TelegramL10n.format("Telegram.Message.Field.Details", detail))
         }
 
-        lines.append("CWD: \(session.cwd)")
-        lines.append("Session: \(session.sessionId)")
+        lines.append(TelegramL10n.format("Telegram.Message.Field.CWD", session.cwd))
+        lines.append(TelegramL10n.format("Telegram.Message.Field.Session", session.sessionId))
         return lines.joined(separator: "\n")
     }
 
     private static func questionFallbackText(for intervention: SessionIntervention) -> String {
         let questions = intervention.resolvedQuestions
         guard questions.count == 1, let question = questions.first else {
-            return "📋 此请求包含多个问题，请在 Mac 上处理"
+            return TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleQuestions")
         }
 
         if question.isSecret {
-            return "🔒 此问题需要密文回答，请在 Mac 上处理"
+            return TelegramL10n.string("Telegram.Message.QuestionFallback.Secret")
         }
 
         if question.allowsMultiple {
-            return "☑️ 此问题可多选，请在 Mac 上处理"
+            return TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleChoice")
         }
 
-        return "📝 此问题需要自由文本回答，请在 Mac 上处理"
+        return TelegramL10n.string("Telegram.Message.QuestionFallback.FreeText")
     }
 
     private static func renderStatus(text: String) -> TelegramRenderedMessage {
@@ -282,16 +282,16 @@ enum TelegramMessageRenderer {
 
     private static func completionText(for session: SessionState) -> String {
         var lines = [
-            "Task completed",
-            "Agent: \(session.messageBadgeDisplayName)",
-            "Project: \(session.projectName)",
-            "CWD: \(session.cwd)",
-            "Session: \(session.sessionId)"
+            TelegramL10n.string("Telegram.Message.TaskCompleted"),
+            TelegramL10n.format("Telegram.Message.Field.Agent", session.messageBadgeDisplayName),
+            TelegramL10n.format("Telegram.Message.Field.Project", session.projectName),
+            TelegramL10n.format("Telegram.Message.Field.CWD", session.cwd),
+            TelegramL10n.format("Telegram.Message.Field.Session", session.sessionId)
         ]
 
         if let preview = latestAssistantPreview(for: session) {
             lines.append("")
-            lines.append("Result:")
+            lines.append(TelegramL10n.string("Telegram.Message.Field.Result"))
             lines.append(preview)
         }
 
@@ -300,23 +300,23 @@ enum TelegramMessageRenderer {
 
     private static func errorText(for session: SessionState, toolId: String) -> String {
         [
-            "Task error",
-            "Agent: \(session.messageBadgeDisplayName)",
-            "Project: \(session.projectName)",
-            "Tool ID: \(toolId)",
-            "CWD: \(session.cwd)",
-            "Session: \(session.sessionId)"
+            TelegramL10n.string("Telegram.Message.TaskError"),
+            TelegramL10n.format("Telegram.Message.Field.Agent", session.messageBadgeDisplayName),
+            TelegramL10n.format("Telegram.Message.Field.Project", session.projectName),
+            TelegramL10n.format("Telegram.Message.Field.ToolID", toolId),
+            TelegramL10n.format("Telegram.Message.Field.CWD", session.cwd),
+            TelegramL10n.format("Telegram.Message.Field.Session", session.sessionId)
         ].joined(separator: "\n")
     }
 
     private static func limitText(for session: SessionState) -> String {
         [
-            "Resource limit reached",
-            "Agent: \(session.messageBadgeDisplayName)",
-            "Project: \(session.projectName)",
-            "Status: compacting context",
-            "CWD: \(session.cwd)",
-            "Session: \(session.sessionId)"
+            TelegramL10n.string("Telegram.Message.ResourceLimitReached"),
+            TelegramL10n.format("Telegram.Message.Field.Agent", session.messageBadgeDisplayName),
+            TelegramL10n.format("Telegram.Message.Field.Project", session.projectName),
+            TelegramL10n.format("Telegram.Message.Field.Status", TelegramL10n.string("Telegram.Message.Status.CompactingContext")),
+            TelegramL10n.format("Telegram.Message.Field.CWD", session.cwd),
+            TelegramL10n.format("Telegram.Message.Field.Session", session.sessionId)
         ].joined(separator: "\n")
     }
 

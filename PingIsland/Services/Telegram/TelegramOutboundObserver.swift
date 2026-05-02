@@ -309,7 +309,7 @@ final class TelegramOutboundObserver {
                 switch await client.editMessageText(
                     chatId: entry.chatId,
                     messageId: entry.messageId,
-                    text: "⏱ Request withdrawn",
+                    text: TelegramL10n.string("Telegram.Message.RequestWithdrawn"),
                     replyMarkup: nil
                 ) {
                 case .success:
@@ -330,22 +330,22 @@ final class TelegramOutboundObserver {
 
         switch response.source {
         case .mac:
-            return "✅ \(decision) · 在 Mac 上响应于 \(time)"
+            return TelegramL10n.format("Telegram.Message.FinalMac", decision, time)
         case .telegram:
-            return "✅ \(decision) · 来自 Telegram · \(time)"
+            return TelegramL10n.format("Telegram.Message.FinalTelegram", decision, time)
         }
     }
 
     private func decisionText(for decision: InterventionResponse.Decision) -> String {
         switch decision {
         case .approveOnce:
-            return "Approved once"
+            return TelegramL10n.string("Telegram.Message.Decision.ApprovedOnce")
         case .approveForSession:
-            return "Approved for session"
+            return TelegramL10n.string("Telegram.Message.Decision.ApprovedForSession")
         case .deny:
-            return "Denied"
+            return TelegramL10n.string("Telegram.Message.Decision.Denied")
         case .answer:
-            return "Answered"
+            return TelegramL10n.string("Telegram.Message.Decision.Answered")
         }
     }
 

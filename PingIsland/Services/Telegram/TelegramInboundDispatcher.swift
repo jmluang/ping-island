@@ -58,7 +58,7 @@ final class TelegramInboundDispatcher {
         }
 
         guard let resolution = try? await callbackRegistry.resolve(token: token) else {
-            await edit(message: message, chatId: chatId, text: "⏱ Already handled")
+            await edit(message: message, chatId: chatId, text: TelegramL10n.string("Telegram.Message.AlreadyHandled"))
             return
         }
 
@@ -67,9 +67,9 @@ final class TelegramInboundDispatcher {
         case .success:
             return
         case .failure(.dispatcherUnavailable):
-            await edit(message: message, chatId: chatId, text: "⚠️ Mac not online")
+            await edit(message: message, chatId: chatId, text: TelegramL10n.string("Telegram.Message.MacNotOnline"))
         case .failure(.actionNotHandled):
-            await edit(message: message, chatId: chatId, text: "⏱ Already handled")
+            await edit(message: message, chatId: chatId, text: TelegramL10n.string("Telegram.Message.AlreadyHandled"))
         }
     }
 

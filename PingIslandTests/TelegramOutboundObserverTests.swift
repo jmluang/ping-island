@@ -15,7 +15,10 @@ final class TelegramOutboundObserverTests: XCTestCase {
 
         XCTAssertEqual(client.sentMessages.count, 1)
         XCTAssertEqual(client.sentMessages.first?.chatId, 123)
-        XCTAssertEqual(client.sentMessages.first?.text.contains("Tool: Bash"), true)
+        XCTAssertEqual(
+            client.sentMessages.first?.text.contains(TelegramL10n.format("Telegram.Message.Field.Tool", "Bash")),
+            true
+        )
         XCTAssertEqual(client.sentMessages.first?.replyMarkup?.inlineKeyboard.flatMap { $0 }.map(\.callbackData), [
             "v1|tok1|allow_once",
             "v1|tok2|deny"
@@ -81,7 +84,7 @@ final class TelegramOutboundObserverTests: XCTestCase {
 
         XCTAssertEqual(client.sentMessages.count, 1)
         XCTAssertEqual(client.sentMessages.first?.replyMarkup, nil)
-        XCTAssertEqual(client.sentMessages.first?.text.contains("Task completed"), true)
+        XCTAssertEqual(client.sentMessages.first?.text.contains(TelegramL10n.string("Telegram.Message.TaskCompleted")), true)
         XCTAssertEqual(client.sentMessages.first?.text.contains("Done."), true)
     }
 
@@ -114,7 +117,7 @@ final class TelegramOutboundObserverTests: XCTestCase {
 
         XCTAssertEqual(client.sentMessages.count, 1)
         XCTAssertEqual(client.sentMessages.first?.replyMarkup, nil)
-        XCTAssertEqual(client.sentMessages.first?.text.contains("Task error"), true)
+        XCTAssertEqual(client.sentMessages.first?.text.contains(TelegramL10n.string("Telegram.Message.TaskError")), true)
         XCTAssertEqual(client.sentMessages.first?.text.contains("tool-error-1"), true)
     }
 
@@ -146,7 +149,10 @@ final class TelegramOutboundObserverTests: XCTestCase {
 
         XCTAssertEqual(client.sentMessages.count, 1)
         XCTAssertEqual(client.sentMessages.first?.replyMarkup, nil)
-        XCTAssertEqual(client.sentMessages.first?.text.contains("Resource limit reached"), true)
+        XCTAssertEqual(
+            client.sentMessages.first?.text.contains(TelegramL10n.string("Telegram.Message.ResourceLimitReached")),
+            true
+        )
     }
 
     func testProcessSnapshotSuppressesLimitWhenLimitEventsAreDisabled() async {
@@ -173,7 +179,7 @@ final class TelegramOutboundObserverTests: XCTestCase {
         await observer.processSnapshot([])
 
         XCTAssertEqual(client.editedMessages.count, 1)
-        XCTAssertEqual(client.editedMessages.first?.text, "⏱ Request withdrawn")
+        XCTAssertEqual(client.editedMessages.first?.text, TelegramL10n.string("Telegram.Message.RequestWithdrawn"))
         let state = try stateStore.load()
         XCTAssertTrue(state.messages.isEmpty)
         XCTAssertTrue(state.callbacks.isEmpty)
@@ -214,7 +220,13 @@ final class TelegramOutboundObserverTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1_775_003_600)
         ))
 
-        XCTAssertEqual(client.editedMessages.map(\.text), ["✅ Approved once · 在 Mac 上响应于 01:00"])
+        XCTAssertEqual(client.editedMessages.map(\.text), [
+            TelegramL10n.format(
+                "Telegram.Message.FinalMac",
+                TelegramL10n.string("Telegram.Message.Decision.ApprovedOnce"),
+                "01:00"
+            )
+        ])
         XCTAssertNil(client.editedMessages.first?.replyMarkup)
         let state = try stateStore.load()
         XCTAssertTrue(state.messages.isEmpty)
@@ -234,7 +246,13 @@ final class TelegramOutboundObserverTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1_775_003_600)
         ))
 
-        XCTAssertEqual(client.editedMessages.map(\.text), ["✅ Denied · 来自 Telegram · 01:00"])
+        XCTAssertEqual(client.editedMessages.map(\.text), [
+            TelegramL10n.format(
+                "Telegram.Message.FinalTelegram",
+                TelegramL10n.string("Telegram.Message.Decision.Denied"),
+                "01:00"
+            )
+        ])
         let state = try stateStore.load()
         XCTAssertTrue(state.messages.isEmpty)
         XCTAssertTrue(state.callbacks.isEmpty)

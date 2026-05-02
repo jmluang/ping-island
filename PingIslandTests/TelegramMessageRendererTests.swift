@@ -17,20 +17,20 @@ final class TelegramMessageRendererTests: XCTestCase {
             tokenProvider: SequentialTokenProvider().nextToken
         )
 
-        XCTAssertEqual(rendered.text, """
-        Approval requested
-        Agent: Claude Code
-        Project: ping-island
-        Tool: Bash
-        CWD: /tmp/ping-island
-        Session: session-1
-
-        Input:
-        command: npm test
-        """)
+        XCTAssertEqual(rendered.text, [
+            TelegramL10n.string("Telegram.Message.ApprovalRequested"),
+            TelegramL10n.format("Telegram.Message.Field.Agent", "Claude Code"),
+            TelegramL10n.format("Telegram.Message.Field.Project", "ping-island"),
+            TelegramL10n.format("Telegram.Message.Field.Tool", "Bash"),
+            TelegramL10n.format("Telegram.Message.Field.CWD", "/tmp/ping-island"),
+            TelegramL10n.format("Telegram.Message.Field.Session", "session-1"),
+            "",
+            TelegramL10n.string("Telegram.Message.Field.Input"),
+            "command: npm test"
+        ].joined(separator: "\n"))
         XCTAssertEqual(rendered.replyMarkup?.inlineKeyboard.flatMap { $0 }.map(\.text), [
-            "Allow Once",
-            "Deny"
+            TelegramL10n.string("Telegram.Button.AllowOnce"),
+            TelegramL10n.string("Telegram.Button.Deny")
         ])
         XCTAssertEqual(rendered.replyMarkup?.inlineKeyboard.flatMap { $0 }.map(\.callbackData), [
             "v1|tok1|allow_once",
@@ -59,9 +59,9 @@ final class TelegramMessageRendererTests: XCTestCase {
         )
 
         XCTAssertEqual(rendered.replyMarkup?.inlineKeyboard.flatMap { $0 }.map(\.text), [
-            "Allow Once",
-            "Deny",
-            "Allow Session"
+            TelegramL10n.string("Telegram.Button.AllowOnce"),
+            TelegramL10n.string("Telegram.Button.Deny"),
+            TelegramL10n.string("Telegram.Button.AllowSession")
         ])
         XCTAssertEqual(rendered.replyMarkup?.inlineKeyboard.flatMap { $0 }.map(\.callbackData), [
             "v1|tok1|allow_once",
@@ -96,7 +96,7 @@ final class TelegramMessageRendererTests: XCTestCase {
         )
 
         XCTAssertEqual(rendered.text.count, 4096)
-        XCTAssertTrue(rendered.text.hasSuffix("… (truncated; open notch for full)"))
+        XCTAssertTrue(rendered.text.hasSuffix(TelegramL10n.string("Telegram.Message.TruncatedSuffix")))
     }
 
     func testRenderSingleQuestionFixedChoiceUsesOptionButtons() throws {
@@ -111,16 +111,16 @@ final class TelegramMessageRendererTests: XCTestCase {
             tokenProvider: SequentialTokenProvider().nextToken
         )
 
-        XCTAssertEqual(rendered.text, """
-        Question requested
-        Agent: Claude Code
-        Project: ping-island
-        Title: Need direction
-        Question: Pick a path
-        Details: Choose one option
-        CWD: /tmp/ping-island
-        Session: session-1
-        """)
+        XCTAssertEqual(rendered.text, [
+            TelegramL10n.string("Telegram.Message.QuestionRequested"),
+            TelegramL10n.format("Telegram.Message.Field.Agent", "Claude Code"),
+            TelegramL10n.format("Telegram.Message.Field.Project", "ping-island"),
+            TelegramL10n.format("Telegram.Message.Field.Title", "Need direction"),
+            TelegramL10n.format("Telegram.Message.Field.Question", "Pick a path"),
+            TelegramL10n.format("Telegram.Message.Field.Details", "Choose one option"),
+            TelegramL10n.format("Telegram.Message.Field.CWD", "/tmp/ping-island"),
+            TelegramL10n.format("Telegram.Message.Field.Session", "session-1")
+        ].joined(separator: "\n"))
         XCTAssertEqual(rendered.replyMarkup?.inlineKeyboard.flatMap { $0 }.map(\.text), [
             "Option A",
             "Option B"
@@ -141,7 +141,7 @@ final class TelegramMessageRendererTests: XCTestCase {
     func testRenderAllowsOtherQuestionRoutesBackToMac() {
         let rendered = renderQuestionFallback(makeQuestionIntervention(allowsOther: true))
 
-        XCTAssertEqual(rendered.text, "📝 此问题需要自由文本回答，请在 Mac 上处理")
+        XCTAssertEqual(rendered.text, TelegramL10n.string("Telegram.Message.QuestionFallback.FreeText"))
         XCTAssertNil(rendered.replyMarkup)
         XCTAssertTrue(rendered.callbackResolutions.isEmpty)
     }
@@ -149,7 +149,7 @@ final class TelegramMessageRendererTests: XCTestCase {
     func testRenderSecretQuestionRoutesBackToMac() {
         let rendered = renderQuestionFallback(makeQuestionIntervention(isSecret: true))
 
-        XCTAssertEqual(rendered.text, "🔒 此问题需要密文回答，请在 Mac 上处理")
+        XCTAssertEqual(rendered.text, TelegramL10n.string("Telegram.Message.QuestionFallback.Secret"))
         XCTAssertNil(rendered.replyMarkup)
         XCTAssertTrue(rendered.callbackResolutions.isEmpty)
     }
@@ -157,7 +157,7 @@ final class TelegramMessageRendererTests: XCTestCase {
     func testRenderMultiSelectQuestionRoutesBackToMac() {
         let rendered = renderQuestionFallback(makeQuestionIntervention(allowsMultiple: true))
 
-        XCTAssertEqual(rendered.text, "☑️ 此问题可多选，请在 Mac 上处理")
+        XCTAssertEqual(rendered.text, TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleChoice"))
         XCTAssertNil(rendered.replyMarkup)
         XCTAssertTrue(rendered.callbackResolutions.isEmpty)
     }
@@ -189,7 +189,7 @@ final class TelegramMessageRendererTests: XCTestCase {
 
         let rendered = renderQuestionFallback(intervention)
 
-        XCTAssertEqual(rendered.text, "📋 此请求包含多个问题，请在 Mac 上处理")
+        XCTAssertEqual(rendered.text, TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleQuestions"))
         XCTAssertNil(rendered.replyMarkup)
         XCTAssertTrue(rendered.callbackResolutions.isEmpty)
     }

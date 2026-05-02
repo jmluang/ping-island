@@ -60,7 +60,9 @@ final class TelegramInboundDispatcherTests: XCTestCase {
 
         await dispatcher.handle(makeUpdate(callbackData: "v1|missing|allow_once"))
 
-        XCTAssertEqual(client.editedMessages.map(\.text), ["⏱ Already handled"])
+        XCTAssertEqual(client.editedMessages.map(\.text), [
+            TelegramL10n.string("Telegram.Message.AlreadyHandled")
+        ])
     }
 
     func testDispatcherUnavailableEditsMacOffline() async throws {
@@ -71,7 +73,9 @@ final class TelegramInboundDispatcherTests: XCTestCase {
 
         await dispatcher.handle(makeUpdate(callbackData: "v1|tok1|allow_once"))
 
-        XCTAssertEqual(client.editedMessages.map(\.text), ["⚠️ Mac not online"])
+        XCTAssertEqual(client.editedMessages.map(\.text), [
+            TelegramL10n.string("Telegram.Message.MacNotOnline")
+        ])
     }
 
     func testActionNotHandledEditsAlreadyHandled() async throws {
@@ -82,7 +86,9 @@ final class TelegramInboundDispatcherTests: XCTestCase {
 
         await dispatcher.handle(makeUpdate(callbackData: "v1|tok1|allow_once"))
 
-        XCTAssertEqual(client.editedMessages.map(\.text), ["⏱ Already handled"])
+        XCTAssertEqual(client.editedMessages.map(\.text), [
+            TelegramL10n.string("Telegram.Message.AlreadyHandled")
+        ])
     }
 
     private func makeDispatcher(

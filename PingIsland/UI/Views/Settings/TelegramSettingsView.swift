@@ -117,11 +117,11 @@ struct TelegramSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Bot Token")
+                Text(appLocalized: "Telegram.Settings.BotToken.Title")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("Telegram Bot API token is stored in Keychain.")
+                Text(appLocalized: "Telegram.Settings.BotToken.Description")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(0.58))
             }
@@ -145,7 +145,7 @@ struct TelegramSettingsView: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Text("测试连接")
+                        Text(appLocalized: "Telegram.Settings.TestConnection")
                             .font(.system(size: 13, weight: .semibold))
                     }
                 }
@@ -186,38 +186,40 @@ struct TelegramSettingsView: View {
     private var notificationSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Notifications")
+                Text(appLocalized: "Telegram.Settings.Notifications.Title")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("Choose which session events are sent to the paired Telegram chat.")
+                Text(appLocalized: "Telegram.Settings.Notifications.Description")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(0.58))
             }
 
             VStack(alignment: .leading, spacing: 9) {
-                Toggle("Enable Telegram", isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { viewModel.masterEnabled },
                     set: { viewModel.setMasterEnabled($0) }
-                ))
+                )) {
+                    Text(appLocalized: "Telegram.Settings.Notifications.EnableTelegram")
+                }
                 .toggleStyle(.switch)
 
-                eventToggle("Permission requests", isOn: Binding(
+                eventToggle("Telegram.Settings.Notifications.PermissionRequests", isOn: Binding(
                     get: { viewModel.permissionEvents },
                     set: { viewModel.setPermissionEvents($0) }
                 ))
 
-                eventToggle("Questions", isOn: Binding(
+                eventToggle("Telegram.Settings.Notifications.Questions", isOn: Binding(
                     get: { viewModel.questionEvents },
                     set: { viewModel.setQuestionEvents($0) }
                 ))
 
-                eventToggle("Completions", isOn: Binding(
+                eventToggle("Telegram.Settings.Notifications.Completions", isOn: Binding(
                     get: { viewModel.completionEvents },
                     set: { viewModel.setCompletionEvents($0) }
                 ))
 
-                eventToggle("Errors & limits", isOn: Binding(
+                eventToggle("Telegram.Settings.Notifications.ErrorsAndLimits", isOn: Binding(
                     get: { viewModel.errorAndLimitEvents },
                     set: { viewModel.setErrorAndLimitEvents($0) }
                 ))
@@ -227,8 +229,10 @@ struct TelegramSettingsView: View {
         }
     }
 
-    private func eventToggle(_ title: String, isOn: Binding<Bool>) -> some View {
-        Toggle(title, isOn: isOn)
+    private func eventToggle(_ titleKey: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Text(appLocalized: titleKey)
+        }
             .toggleStyle(.switch)
             .disabled(!viewModel.masterEnabled)
             .opacity(viewModel.masterEnabled ? 1 : 0.45)
@@ -238,7 +242,7 @@ struct TelegramSettingsView: View {
     private var pairingSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Pairing")
+                Text(appLocalized: "Telegram.Settings.Pairing.Title")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.white)
 
@@ -254,7 +258,7 @@ struct TelegramSettingsView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Text("Start pairing")
+                    Text(appLocalized: "Telegram.Settings.Pairing.Start")
                         .font(.system(size: 13, weight: .semibold))
                 }
             }
@@ -266,15 +270,15 @@ struct TelegramSettingsView: View {
     private var statusText: String {
         switch viewModel.connectionState {
         case .idle:
-            return "未测试"
+            return AppLocalization.string("Telegram.Settings.Connection.Idle")
         case .testing:
-            return "正在测试连接..."
+            return AppLocalization.string("Telegram.Settings.Connection.Testing")
         case .ok(let username):
-            return "已连接 @\(username)"
+            return AppLocalization.format("Telegram.Settings.Connection.OK", username)
         case .invalidToken:
-            return "Token 无效"
+            return AppLocalization.string("Telegram.Settings.Connection.InvalidToken")
         case .networkError:
-            return "网络连接失败"
+            return AppLocalization.string("Telegram.Settings.Connection.NetworkError")
         }
     }
 
@@ -294,11 +298,11 @@ struct TelegramSettingsView: View {
     private var pairingStatusText: String {
         switch viewModel.pairingState {
         case .idle:
-            return "Open a 5-minute window, then send any message to the bot."
+            return AppLocalization.string("Telegram.Settings.Pairing.Idle")
         case .opening:
-            return "Opening pairing window..."
+            return AppLocalization.string("Telegram.Settings.Pairing.Opening")
         case .open:
-            return "Pairing window is open for 5 minutes."
+            return AppLocalization.string("Telegram.Settings.Pairing.Open")
         }
     }
 }
