@@ -12,7 +12,7 @@ final class TelegramAPIClientTests: XCTestCase {
         let result = TelegramText.truncate(input, limit: 4096)
 
         XCTAssertEqual(result.count, 4096)
-        XCTAssertTrue(result.hasSuffix("… (truncated; open notch for full)"))
+        XCTAssertTrue(result.hasSuffix(TelegramL10n.string("Telegram.Message.TruncatedSuffix")))
     }
 
     func testGetMeReturnsUsername() async throws {
