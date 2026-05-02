@@ -12,6 +12,8 @@ final class TelegramService {
     private let pollerFactory: (String) async -> TelegramPolling
     private let outboundObserverFactory: @MainActor (String, Int64) -> TelegramOutboundObserving
     private let inboundDispatcherFactory: @MainActor (String, TelegramStateStoring) -> TelegramInboundDispatching
+    private let restartSweeperFactory: @MainActor (String, TelegramStateStoring) -> TelegramRestartSweeping
+    private let activeSessionsProvider: @MainActor () async -> [SessionState]
 
     private var poller: TelegramPolling?
     private var pollerToken: String?
@@ -20,6 +22,7 @@ final class TelegramService {
     private var outboundObserver: TelegramOutboundObserving?
     private var outboundToken: String?
     private var outboundChatId: Int64?
+    private var completedRestartSweepKey: String?
     private var defaultsObserver: NSObjectProtocol?
 
     init(
@@ -32,7 +35,11 @@ final class TelegramService {
             TelegramLongPoller(client: TelegramAPIClient(token: token))
         },
         outboundObserverFactory: @escaping @MainActor (String, Int64) -> TelegramOutboundObserving = TelegramService.makeDefaultOutboundObserver,
-        inboundDispatcherFactory: @escaping @MainActor (String, TelegramStateStoring) -> TelegramInboundDispatching = TelegramService.makeDefaultInboundDispatcher
+        inboundDispatcherFactory: @escaping @MainActor (String, TelegramStateStoring) -> TelegramInboundDispatching = TelegramService.makeDefaultInboundDispatcher,
+        restartSweeperFactory: @escaping @MainActor (String, TelegramStateStoring) -> TelegramRestartSweeping = TelegramService.makeDefaultRestartSweeper,
+        activeSessionsProvider: @escaping @MainActor () async -> [SessionState] = {
+            SessionStore.shared.allSessions()
+        }
     ) {
         self.settings = settings
         self.tokenStore = tokenStore
@@ -42,6 +49,8 @@ final class TelegramService {
         self.pollerFactory = pollerFactory
         self.outboundObserverFactory = outboundObserverFactory
         self.inboundDispatcherFactory = inboundDispatcherFactory
+        self.restartSweeperFactory = restartSweeperFactory
+        self.activeSessionsProvider = activeSessionsProvider
     }
 
     func start() {
@@ -96,6 +105,7 @@ final class TelegramService {
         }
 
         ensureInboundDispatcher(token: token)
+        await runRestartSweepIfNeeded(token: token, chatId: chatId)
         ensureOutboundObserver(token: token, chatId: chatId)
 
         guard poller == nil else {
@@ -135,6 +145,17 @@ final class TelegramService {
 
         inboundDispatcher = inboundDispatcherFactory(token, stateStore)
         inboundToken = token
+    }
+
+    private func runRestartSweepIfNeeded(token: String, chatId: Int64) async {
+        let sweepKey = "\(token)|\(chatId)"
+        guard completedRestartSweepKey != sweepKey else {
+            return
+        }
+
+        let sweeper = restartSweeperFactory(token, stateStore)
+        await sweeper.sweep(activeSessions: activeSessionsProvider())
+        completedRestartSweepKey = sweepKey
     }
 
     private func ensureOutboundObserver(token: String, chatId: Int64) {
@@ -205,6 +226,17 @@ final class TelegramService {
     ) -> TelegramInboundDispatching {
         TelegramInboundDispatcher(
             stateStore: stateStore,
+            callbackRegistry: TelegramCallbackRegistry(stateStore: stateStore),
+            client: TelegramAPIClient(token: token)
+        )
+    }
+
+    private static func makeDefaultRestartSweeper(
+        token: String,
+        stateStore: TelegramStateStoring
+    ) -> TelegramRestartSweeping {
+        TelegramRestartSweeper(
+            messageRegistry: TelegramMessageRegistry(stateStore: stateStore),
             callbackRegistry: TelegramCallbackRegistry(stateStore: stateStore),
             client: TelegramAPIClient(token: token)
         )

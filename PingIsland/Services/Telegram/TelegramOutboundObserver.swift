@@ -253,16 +253,7 @@ final class TelegramOutboundObserver {
     }
 
     private func splitKey(_ key: String) -> (sessionId: String, interventionId: String)? {
-        guard let separator = key.firstIndex(of: "|") else {
-            return nil
-        }
-
-        let sessionId = String(key[..<separator])
-        let interventionId = String(key[key.index(after: separator)...])
-        guard !sessionId.isEmpty, !interventionId.isEmpty else {
-            return nil
-        }
-        return (sessionId, interventionId)
+        InterventionKey.parse(key)
     }
 
     private struct RenderableAttention {

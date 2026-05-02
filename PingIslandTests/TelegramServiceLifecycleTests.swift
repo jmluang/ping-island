@@ -200,6 +200,40 @@ final class TelegramServiceLifecycleTests: XCTestCase {
         XCTAssertTrue(handledChatIds.isEmpty)
     }
 
+    func testReadyRefreshRunsRestartSweepOnceBeforeOutboundObserverStarts() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let outboundFactory = FakeTelegramOutboundObserverFactory()
+        let sweepFactory = FakeTelegramRestartSweeperFactory()
+        let activeSession = SessionState(sessionId: "active-session", cwd: "/tmp/ping-island")
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: 7),
+            pollerFactory: { _ in FakeTelegramPolling() },
+            outboundObserverFactory: { token, chatId in
+                outboundFactory.makeObserver(token: token, chatId: chatId)
+            },
+            restartSweeperFactory: { token, _ in
+                sweepFactory.makeSweeper(token: token)
+            },
+            activeSessionsProvider: {
+                [activeSession]
+            }
+        )
+
+        await service.refresh()
+        await service.refresh()
+
+        XCTAssertEqual(sweepFactory.requests, ["123:abc"])
+        XCTAssertEqual(sweepFactory.sweepers.first?.sweptSessions.map { $0.map(\.sessionId) }, [["active-session"]])
+        XCTAssertEqual(outboundFactory.observers.first?.startCount, 1)
+        XCTAssertLessThan(
+            sweepFactory.sweepers.first?.firstSweepOrder ?? .max,
+            outboundFactory.observers.first?.firstStartOrder ?? .min
+        )
+    }
+
     private func makeDefaults(
         _ testName: StaticString = #function
     ) -> UserDefaults {
@@ -274,13 +308,52 @@ private final class FakeTelegramOutboundObserverFactory {
 private final class FakeTelegramOutboundObserver: TelegramOutboundObserving {
     private(set) var startCount = 0
     private(set) var stopCount = 0
+    private(set) var firstStartOrder: Int?
 
     func start(publisher: AnyPublisher<[SessionState], Never>) {
+        if firstStartOrder == nil {
+            firstStartOrder = TelegramServiceLifecycleOrder.next()
+        }
         startCount += 1
     }
 
     func stop() {
         stopCount += 1
+    }
+}
+
+@MainActor
+private final class FakeTelegramRestartSweeperFactory {
+    private(set) var requests: [String] = []
+    private(set) var sweepers: [FakeTelegramRestartSweeper] = []
+
+    func makeSweeper(token: String) -> TelegramRestartSweeping {
+        requests.append(token)
+        let sweeper = FakeTelegramRestartSweeper()
+        sweepers.append(sweeper)
+        return sweeper
+    }
+}
+
+@MainActor
+private final class FakeTelegramRestartSweeper: TelegramRestartSweeping {
+    private(set) var sweptSessions: [[SessionState]] = []
+    private(set) var firstSweepOrder: Int?
+
+    func sweep(activeSessions: [SessionState]) async {
+        if firstSweepOrder == nil {
+            firstSweepOrder = TelegramServiceLifecycleOrder.next()
+        }
+        sweptSessions.append(activeSessions)
+    }
+}
+
+private enum TelegramServiceLifecycleOrder {
+    private nonisolated(unsafe) static var value = 0
+
+    static func next() -> Int {
+        value += 1
+        return value
     }
 }
 
