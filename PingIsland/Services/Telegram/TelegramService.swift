@@ -14,6 +14,8 @@ final class TelegramService {
     private let inboundDispatcherFactory: @MainActor (String, TelegramStateStoring) -> TelegramInboundDispatching
     private let restartSweeperFactory: @MainActor (String, TelegramStateStoring) -> TelegramRestartSweeping
     private let activeSessionsProvider: @MainActor () async -> [SessionState]
+    private let callbackGCFactory: @MainActor (String, TelegramStateStoring) -> TelegramCallbackGarbageCollecting
+    private let callbackGCSleep: @Sendable (TimeInterval) async -> Void
 
     private var poller: TelegramPolling?
     private var pollerToken: String?
@@ -23,6 +25,8 @@ final class TelegramService {
     private var outboundToken: String?
     private var outboundChatId: Int64?
     private var completedRestartSweepKey: String?
+    private var callbackGCTask: Task<Void, Never>?
+    private var callbackGCToken: String?
     private var defaultsObserver: NSObjectProtocol?
 
     init(
@@ -39,6 +43,10 @@ final class TelegramService {
         restartSweeperFactory: @escaping @MainActor (String, TelegramStateStoring) -> TelegramRestartSweeping = TelegramService.makeDefaultRestartSweeper,
         activeSessionsProvider: @escaping @MainActor () async -> [SessionState] = {
             SessionStore.shared.allSessions()
+        },
+        callbackGCFactory: @escaping @MainActor (String, TelegramStateStoring) -> TelegramCallbackGarbageCollecting = TelegramService.makeDefaultCallbackGC,
+        callbackGCSleep: @escaping @Sendable (TimeInterval) async -> Void = { interval in
+            try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
         }
     ) {
         self.settings = settings
@@ -51,6 +59,12 @@ final class TelegramService {
         self.inboundDispatcherFactory = inboundDispatcherFactory
         self.restartSweeperFactory = restartSweeperFactory
         self.activeSessionsProvider = activeSessionsProvider
+        self.callbackGCFactory = callbackGCFactory
+        self.callbackGCSleep = callbackGCSleep
+    }
+
+    deinit {
+        callbackGCTask?.cancel()
     }
 
     func start() {
@@ -84,6 +98,7 @@ final class TelegramService {
         pollerToken = nil
         inboundDispatcher = nil
         inboundToken = nil
+        stopCallbackGC()
         stopOutboundObserver()
         Task {
             await existingPoller?.stop()
@@ -96,6 +111,7 @@ final class TelegramService {
               let chatId = authorizedChatId
         else {
             await stopCurrentPoller()
+            stopCallbackGC()
             stopOutboundObserver()
             return
         }
@@ -106,6 +122,7 @@ final class TelegramService {
 
         ensureInboundDispatcher(token: token)
         await runRestartSweepIfNeeded(token: token, chatId: chatId)
+        await ensureCallbackGC(token: token)
         ensureOutboundObserver(token: token, chatId: chatId)
 
         guard poller == nil else {
@@ -130,6 +147,7 @@ final class TelegramService {
         pollerToken = nil
         inboundDispatcher = nil
         inboundToken = nil
+        stopCallbackGC()
         await existingPoller?.stop()
     }
 
@@ -179,6 +197,32 @@ final class TelegramService {
         outboundObserver = nil
         outboundToken = nil
         outboundChatId = nil
+    }
+
+    private func ensureCallbackGC(token: String) async {
+        guard callbackGCToken != token else {
+            return
+        }
+
+        stopCallbackGC()
+        let collector = callbackGCFactory(token, stateStore)
+        await collector.collect(now: Date())
+        callbackGCToken = token
+        callbackGCTask = Task { @MainActor [callbackGCSleep] in
+            while !Task.isCancelled {
+                await callbackGCSleep(60 * 60)
+                guard !Task.isCancelled else {
+                    return
+                }
+                await collector.collect(now: Date())
+            }
+        }
+    }
+
+    private func stopCallbackGC() {
+        callbackGCTask?.cancel()
+        callbackGCTask = nil
+        callbackGCToken = nil
     }
 
     private func loadedToken() -> String? {
@@ -236,6 +280,17 @@ final class TelegramService {
         stateStore: TelegramStateStoring
     ) -> TelegramRestartSweeping {
         TelegramRestartSweeper(
+            messageRegistry: TelegramMessageRegistry(stateStore: stateStore),
+            callbackRegistry: TelegramCallbackRegistry(stateStore: stateStore),
+            client: TelegramAPIClient(token: token)
+        )
+    }
+
+    private static func makeDefaultCallbackGC(
+        token: String,
+        stateStore: TelegramStateStoring
+    ) -> TelegramCallbackGarbageCollecting {
+        TelegramCallbackGarbageCollector(
             messageRegistry: TelegramMessageRegistry(stateStore: stateStore),
             callbackRegistry: TelegramCallbackRegistry(stateStore: stateStore),
             client: TelegramAPIClient(token: token)

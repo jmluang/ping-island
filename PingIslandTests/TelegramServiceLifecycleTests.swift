@@ -234,6 +234,30 @@ final class TelegramServiceLifecycleTests: XCTestCase {
         )
     }
 
+    func testReadyRefreshRunsCallbackGCOnceAndStartsHourlyLoop() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let gcFactory = FakeTelegramCallbackGCFactory()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: 7),
+            pollerFactory: { _ in FakeTelegramPolling() },
+            callbackGCFactory: { token, _ in
+                gcFactory.makeCollector(token: token)
+            },
+            callbackGCSleep: { _ in
+                try? await Task.sleep(nanoseconds: 3_600_000_000_000)
+            }
+        )
+
+        await service.refresh()
+        await service.refresh()
+
+        XCTAssertEqual(gcFactory.requests, ["123:abc"])
+        XCTAssertEqual(gcFactory.collectors.first?.collectCount, 1)
+    }
+
     private func makeDefaults(
         _ testName: StaticString = #function
     ) -> UserDefaults {
@@ -354,6 +378,28 @@ private enum TelegramServiceLifecycleOrder {
     static func next() -> Int {
         value += 1
         return value
+    }
+}
+
+@MainActor
+private final class FakeTelegramCallbackGCFactory {
+    private(set) var requests: [String] = []
+    private(set) var collectors: [FakeTelegramCallbackGC] = []
+
+    func makeCollector(token: String) -> TelegramCallbackGarbageCollecting {
+        requests.append(token)
+        let collector = FakeTelegramCallbackGC()
+        collectors.append(collector)
+        return collector
+    }
+}
+
+@MainActor
+private final class FakeTelegramCallbackGC: TelegramCallbackGarbageCollecting {
+    private(set) var collectCount = 0
+
+    func collect(now: Date) async {
+        collectCount += 1
     }
 }
 

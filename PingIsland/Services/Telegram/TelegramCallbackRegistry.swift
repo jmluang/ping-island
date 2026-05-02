@@ -12,6 +12,10 @@ actor TelegramCallbackRegistry {
         return state.callbacks[token]
     }
 
+    func all() throws -> [String: TelegramPersistentState.CallbackResolution] {
+        try stateStore.load().callbacks
+    }
+
     func upsert(_ resolutions: [String: TelegramPersistentState.CallbackResolution]) throws {
         guard !resolutions.isEmpty else { return }
 
