@@ -20,22 +20,35 @@ final class TelegramSettingsViewModel: ObservableObject {
     @Published var tokenInput: String
     @Published private(set) var connectionState: ConnectionState = .idle
     @Published private(set) var pairingState: PairingState = .idle
+    @Published private(set) var masterEnabled: Bool
+    @Published private(set) var permissionEvents: Bool
+    @Published private(set) var questionEvents: Bool
+    @Published private(set) var completionEvents: Bool
+    @Published private(set) var errorAndLimitEvents: Bool
 
     private let tokenStore: TelegramTokenStoring
+    private var settings: TelegramSettings
     private let clientFactory: (String) -> TelegramGetMeClient
     private let beginPairing: () async -> Void
 
     init(
         tokenStore: TelegramTokenStoring = TelegramTokenStore(),
+        settings: TelegramSettings = TelegramSettings(),
         clientFactory: @escaping (String) -> TelegramGetMeClient = { TelegramAPIClient(token: $0) },
         beginPairing: @escaping () async -> Void = {
             await TelegramService.shared.beginPairing()
         }
     ) {
         self.tokenStore = tokenStore
+        self.settings = settings
         self.clientFactory = clientFactory
         self.beginPairing = beginPairing
         self.tokenInput = (try? tokenStore.load()) ?? ""
+        self.masterEnabled = settings.masterEnabled
+        self.permissionEvents = settings.permissionEvents
+        self.questionEvents = settings.questionEvents
+        self.completionEvents = settings.completionEvents
+        self.errorAndLimitEvents = settings.errorEvents && settings.limitEvents
     }
 
     func saveAndTest() async {
@@ -69,6 +82,32 @@ final class TelegramSettingsViewModel: ObservableObject {
         pairingState = .opening
         await beginPairing()
         pairingState = .open
+    }
+
+    func setMasterEnabled(_ isEnabled: Bool) {
+        masterEnabled = isEnabled
+        settings.masterEnabled = isEnabled
+    }
+
+    func setPermissionEvents(_ isEnabled: Bool) {
+        permissionEvents = isEnabled
+        settings.permissionEvents = isEnabled
+    }
+
+    func setQuestionEvents(_ isEnabled: Bool) {
+        questionEvents = isEnabled
+        settings.questionEvents = isEnabled
+    }
+
+    func setCompletionEvents(_ isEnabled: Bool) {
+        completionEvents = isEnabled
+        settings.completionEvents = isEnabled
+    }
+
+    func setErrorAndLimitEvents(_ isEnabled: Bool) {
+        errorAndLimitEvents = isEnabled
+        settings.errorEvents = isEnabled
+        settings.limitEvents = isEnabled
     }
 }
 
@@ -120,6 +159,12 @@ struct TelegramSettingsView: View {
                 .background(Color.white.opacity(0.12))
                 .padding(.vertical, 4)
 
+            notificationSection
+
+            Divider()
+                .background(Color.white.opacity(0.12))
+                .padding(.vertical, 4)
+
             pairingSection
         }
         .padding(.top, 2)
@@ -136,6 +181,58 @@ struct TelegramSettingsView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.white.opacity(0.68))
         }
+    }
+
+    private var notificationSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Notifications")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+
+                Text("Choose which session events are sent to the paired Telegram chat.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.58))
+            }
+
+            VStack(alignment: .leading, spacing: 9) {
+                Toggle("Enable Telegram", isOn: Binding(
+                    get: { viewModel.masterEnabled },
+                    set: { viewModel.setMasterEnabled($0) }
+                ))
+                .toggleStyle(.switch)
+
+                eventToggle("Permission requests", isOn: Binding(
+                    get: { viewModel.permissionEvents },
+                    set: { viewModel.setPermissionEvents($0) }
+                ))
+
+                eventToggle("Questions", isOn: Binding(
+                    get: { viewModel.questionEvents },
+                    set: { viewModel.setQuestionEvents($0) }
+                ))
+
+                eventToggle("Completions", isOn: Binding(
+                    get: { viewModel.completionEvents },
+                    set: { viewModel.setCompletionEvents($0) }
+                ))
+
+                eventToggle("Errors & limits", isOn: Binding(
+                    get: { viewModel.errorAndLimitEvents },
+                    set: { viewModel.setErrorAndLimitEvents($0) }
+                ))
+            }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundColor(.white.opacity(0.82))
+        }
+    }
+
+    private func eventToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Toggle(title, isOn: isOn)
+            .toggleStyle(.switch)
+            .disabled(!viewModel.masterEnabled)
+            .opacity(viewModel.masterEnabled ? 1 : 0.45)
+            .padding(.leading, 14)
     }
 
     private var pairingSection: some View {

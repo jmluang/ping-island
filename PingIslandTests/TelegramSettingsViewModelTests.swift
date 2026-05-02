@@ -3,6 +3,16 @@ import XCTest
 
 @MainActor
 final class TelegramSettingsViewModelTests: XCTestCase {
+    private var suiteNames: [String] = []
+
+    override func tearDownWithError() throws {
+        for suiteName in suiteNames {
+            UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        }
+        suiteNames.removeAll()
+        try super.tearDownWithError()
+    }
+
     func testInitLoadsExistingToken() {
         let store = FakeTelegramTokenStore(token: "123:abc")
 
@@ -88,6 +98,50 @@ final class TelegramSettingsViewModelTests: XCTestCase {
         let pairingCallCount = await pairingRecorder.callCount()
         XCTAssertEqual(pairingCallCount, 1)
         XCTAssertEqual(viewModel.pairingState, .open)
+    }
+
+    func testInitLoadsEventTogglesAndPersistsChanges() {
+        let defaults = makeDefaults()
+        var settings = TelegramSettings(defaults: defaults)
+        settings.masterEnabled = true
+        settings.permissionEvents = false
+        settings.questionEvents = true
+        settings.completionEvents = true
+        settings.errorEvents = false
+        settings.limitEvents = false
+
+        let viewModel = TelegramSettingsViewModel(
+            tokenStore: FakeTelegramTokenStore(),
+            settings: settings
+        )
+
+        XCTAssertTrue(viewModel.masterEnabled)
+        XCTAssertFalse(viewModel.permissionEvents)
+        XCTAssertTrue(viewModel.questionEvents)
+        XCTAssertTrue(viewModel.completionEvents)
+        XCTAssertFalse(viewModel.errorAndLimitEvents)
+
+        viewModel.setMasterEnabled(false)
+        viewModel.setPermissionEvents(true)
+        viewModel.setQuestionEvents(false)
+        viewModel.setCompletionEvents(false)
+        viewModel.setErrorAndLimitEvents(true)
+
+        let reloaded = TelegramSettings(defaults: defaults)
+        XCTAssertFalse(reloaded.masterEnabled)
+        XCTAssertTrue(reloaded.permissionEvents)
+        XCTAssertFalse(reloaded.questionEvents)
+        XCTAssertFalse(reloaded.completionEvents)
+        XCTAssertTrue(reloaded.errorEvents)
+        XCTAssertTrue(reloaded.limitEvents)
+    }
+
+    private func makeDefaults(testName: String = #function) -> UserDefaults {
+        let suiteName = "PingIslandTests.TelegramSettingsViewModel.\(testName).\(UUID().uuidString)"
+        suiteNames.append(suiteName)
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 }
 

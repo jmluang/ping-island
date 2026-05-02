@@ -38,6 +38,33 @@ final class TelegramOutboundObserverTests: XCTestCase {
         XCTAssertEqual(client.sentMessages.count, 1)
     }
 
+    func testProcessSnapshotSuppressesApprovalWhenPermissionEventsAreDisabled() async {
+        let client = FakeTelegramMessagingClient()
+        let observer = makeObserver(client: client, categoryEnabled: { category in
+            category != .permission
+        })
+        let session = makeSession(phase: .waitingForApproval(makePermission(toolUseId: "tool-1")))
+
+        await observer.processSnapshot([session])
+
+        XCTAssertTrue(client.sentMessages.isEmpty)
+    }
+
+    func testProcessSnapshotSuppressesQuestionWhenQuestionEventsAreDisabled() async {
+        let client = FakeTelegramMessagingClient()
+        let observer = makeObserver(client: client, categoryEnabled: { category in
+            category != .question
+        })
+        let session = makeSession(
+            intervention: makeQuestionIntervention(),
+            phase: .waitingForInput
+        )
+
+        await observer.processSnapshot([session])
+
+        XCTAssertTrue(client.sentMessages.isEmpty)
+    }
+
     func testRemovedAttentionWithoutRecentResponseEditsWithdrawnAndDropsRegistries() async throws {
         let client = FakeTelegramMessagingClient()
         let stateStore = InMemoryTelegramStateStore()
@@ -143,7 +170,8 @@ final class TelegramOutboundObserverTests: XCTestCase {
 
     private func makeObserver(
         client: FakeTelegramMessagingClient,
-        stateStore: InMemoryTelegramStateStore = InMemoryTelegramStateStore()
+        stateStore: InMemoryTelegramStateStore = InMemoryTelegramStateStore(),
+        categoryEnabled: @escaping (TelegramEventCategory) -> Bool = { _ in true }
     ) -> TelegramOutboundObserver {
         TelegramOutboundObserver(
             chatId: 123,
@@ -153,11 +181,13 @@ final class TelegramOutboundObserverTests: XCTestCase {
             rateLimitQueue: TelegramRateLimitQueue(minimumSpacing: 0),
             now: { Date(timeIntervalSince1970: 1_775_000_000) },
             timeFormatter: { _ in "01:00" },
-            tokenProvider: SequentialTelegramTokenProvider().nextToken
+            tokenProvider: SequentialTelegramTokenProvider().nextToken,
+            categoryEnabled: categoryEnabled
         )
     }
 
     private func makeSession(
+        intervention: SessionIntervention? = nil,
         phase: SessionPhase
     ) -> SessionState {
         SessionState(
@@ -165,6 +195,7 @@ final class TelegramOutboundObserverTests: XCTestCase {
             cwd: "/tmp/ping-island",
             projectName: "ping-island",
             provider: .claude,
+            intervention: intervention,
             phase: phase
         )
     }
@@ -178,6 +209,33 @@ final class TelegramOutboundObserverTests: XCTestCase {
             toolName: toolName,
             toolInput: ["command": AnyCodable("npm test")],
             receivedAt: Date(timeIntervalSince1970: 1_775_000_000)
+        )
+    }
+
+    private func makeQuestionIntervention() -> SessionIntervention {
+        SessionIntervention(
+            id: "question-intervention-1",
+            kind: .question,
+            title: "Need direction",
+            message: "Pick one option",
+            options: [],
+            questions: [
+                SessionInterventionQuestion(
+                    id: "question-1",
+                    header: "Need direction",
+                    prompt: "Pick a path",
+                    detail: "Pick one option",
+                    options: [
+                        .init(id: "a", title: "Option A", detail: nil),
+                        .init(id: "b", title: "Option B", detail: nil)
+                    ],
+                    allowsMultiple: false,
+                    allowsOther: false,
+                    isSecret: false
+                )
+            ],
+            supportsSessionScope: false,
+            metadata: [:]
         )
     }
 }

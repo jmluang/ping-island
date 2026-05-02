@@ -4,6 +4,15 @@ enum TelegramAttentionPayload: Equatable {
     case approval(id: String, permission: PermissionContext?, intervention: SessionIntervention?)
     case question(intervention: SessionIntervention)
 
+    var category: TelegramEventCategory {
+        switch self {
+        case .approval:
+            return .permission
+        case .question:
+            return .question
+        }
+    }
+
     static func approval(for session: SessionState) -> TelegramAttentionPayload? {
         if let permission = session.activePermission {
             return .approval(

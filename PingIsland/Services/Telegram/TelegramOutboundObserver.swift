@@ -19,6 +19,7 @@ final class TelegramOutboundObserver {
     private let timeFormatter: (Date) -> String
     private let tokenProvider: TelegramMessageRenderer.TokenProvider
     private let recentResponseTTL: TimeInterval
+    private let categoryEnabled: (TelegramEventCategory) -> Bool
 
     private var lastKeys: Set<String> = []
     private var recentResponses: [String: Date] = [:]
@@ -36,6 +37,7 @@ final class TelegramOutboundObserver {
             TelegramCallbackTokenGenerator.makeToken()
         },
         recentResponseTTL: TimeInterval = 1.0,
+        categoryEnabled: @escaping (TelegramEventCategory) -> Bool = { TelegramSettings().isEnabled(for: $0) },
         actionHub: InterventionActionHub? = nil
     ) {
         self.chatId = chatId
@@ -47,6 +49,7 @@ final class TelegramOutboundObserver {
         self.timeFormatter = timeFormatter
         self.tokenProvider = tokenProvider
         self.recentResponseTTL = recentResponseTTL
+        self.categoryEnabled = categoryEnabled
 
         actionHub?.responded
             .sink { [weak self] response in
@@ -131,15 +134,19 @@ final class TelegramOutboundObserver {
             return (key, RenderableAttention(
                 session: session,
                 interventionId: renderable.id,
-                payload: renderable.payload
+                payload: renderable.payload,
+                category: renderable.payload.category
             ))
         })
 
         let currentKeys = Set(renderables.keys)
         let removedKeys = lastKeys.subtracting(currentKeys)
 
-        for key in currentKeys.subtracting(lastKeys) {
+        for key in currentKeys {
             guard let renderable = renderables[key] else {
+                continue
+            }
+            guard categoryEnabled(renderable.category) else {
                 continue
             }
             await send(renderable)
@@ -260,6 +267,7 @@ final class TelegramOutboundObserver {
         let session: SessionState
         let interventionId: String
         let payload: TelegramAttentionPayload
+        let category: TelegramEventCategory
     }
 }
 
