@@ -1,7 +1,8 @@
+import Combine
 import Foundation
 
 @MainActor
-final class TelegramService {
+final class TelegramService: ObservableObject {
     static let shared = TelegramService()
 
     private var settings: TelegramSettings
@@ -16,6 +17,9 @@ final class TelegramService {
     private let activeSessionsProvider: @MainActor () async -> [SessionState]
     private let callbackGCFactory: @MainActor (String, TelegramStateStoring) -> TelegramCallbackGarbageCollecting
     private let callbackGCSleep: @Sendable (TimeInterval) async -> Void
+    private let messagingClientFactory: @MainActor (String) -> TelegramMessagingClient
+
+    @Published private(set) var diagnostics = TelegramDiagnosticsState()
 
     private var poller: TelegramPolling?
     private var pollerToken: String?
@@ -47,7 +51,8 @@ final class TelegramService {
         callbackGCFactory: @escaping @MainActor (String, TelegramStateStoring) -> TelegramCallbackGarbageCollecting = TelegramService.makeDefaultCallbackGC,
         callbackGCSleep: @escaping @Sendable (TimeInterval) async -> Void = { interval in
             try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-        }
+        },
+        messagingClientFactory: @escaping @MainActor (String) -> TelegramMessagingClient = { TelegramAPIClient(token: $0) }
     ) {
         self.settings = settings
         self.tokenStore = tokenStore
@@ -61,6 +66,7 @@ final class TelegramService {
         self.activeSessionsProvider = activeSessionsProvider
         self.callbackGCFactory = callbackGCFactory
         self.callbackGCSleep = callbackGCSleep
+        self.messagingClientFactory = messagingClientFactory
     }
 
     deinit {
@@ -113,6 +119,7 @@ final class TelegramService {
             await stopCurrentPoller()
             stopCallbackGC()
             stopOutboundObserver()
+            refreshDiagnosticsInFlightCount()
             return
         }
 
@@ -132,13 +139,38 @@ final class TelegramService {
         let newPoller = await pollerFactory(token)
         poller = newPoller
         pollerToken = token
-        await newPoller.start { [weak self] update in
-            await self?.handle(update)
-        }
+        await newPoller.start(
+            handler: { [weak self] update in
+                await self?.handle(update)
+            },
+            diagnosticsHandler: { [weak self] event in
+                await self?.recordPollerDiagnostics(event)
+            }
+        )
     }
 
     func beginPairing() async {
         await authState.openPairingWindow(timeout: 5 * 60)
+    }
+
+    func sendTestNotification() async -> Result<Void, TelegramAPIError> {
+        guard let token = loadedToken(), let chatId = authorizedChatId else {
+            return .failure(.transport(TelegramL10n.string("Telegram.Diagnostics.NotReady")))
+        }
+
+        let client = messagingClientFactory(token)
+        switch await client.sendMessage(
+            chatId: chatId,
+            text: TelegramL10n.string("Telegram.Diagnostics.TestMessage"),
+            replyMarkup: nil,
+            disableNotification: false
+        ) {
+        case .success:
+            return .success(())
+        case .failure(let error):
+            diagnostics.lastError = error.diagnosticsDescription
+            return .failure(error)
+        }
     }
 
     private func stopCurrentPoller() async {
@@ -149,6 +181,7 @@ final class TelegramService {
         inboundToken = nil
         stopCallbackGC()
         await existingPoller?.stop()
+        refreshDiagnosticsInFlightCount()
     }
 
     private func ensureInboundDispatcher(token: String) {
@@ -225,6 +258,21 @@ final class TelegramService {
         callbackGCToken = nil
     }
 
+    private func recordPollerDiagnostics(_ event: TelegramPollerDiagnosticsEvent) {
+        switch event {
+        case .success(let date):
+            diagnostics.lastSuccessfulGetUpdatesAt = date
+            diagnostics.lastError = nil
+        case .failure(let error, _):
+            diagnostics.lastError = error.diagnosticsDescription
+        }
+        refreshDiagnosticsInFlightCount()
+    }
+
+    private func refreshDiagnosticsInFlightCount() {
+        diagnostics.inFlightMessageCount = ((try? stateStore.load())?.messages.count) ?? 0
+    }
+
     private func loadedToken() -> String? {
         guard let token = try? tokenStore.load()?.trimmingCharacters(in: .whitespacesAndNewlines),
               !token.isEmpty
@@ -295,5 +343,38 @@ final class TelegramService {
             callbackRegistry: TelegramCallbackRegistry(stateStore: stateStore),
             client: TelegramAPIClient(token: token)
         )
+    }
+}
+
+struct TelegramDiagnosticsState: Equatable {
+    var lastSuccessfulGetUpdatesAt: Date?
+    var lastError: String?
+    var inFlightMessageCount: Int
+
+    init(
+        lastSuccessfulGetUpdatesAt: Date? = nil,
+        lastError: String? = nil,
+        inFlightMessageCount: Int = 0
+    ) {
+        self.lastSuccessfulGetUpdatesAt = lastSuccessfulGetUpdatesAt
+        self.lastError = lastError
+        self.inFlightMessageCount = inFlightMessageCount
+    }
+}
+
+private extension TelegramAPIError {
+    var diagnosticsDescription: String {
+        switch self {
+        case .http(let status, let description):
+            return "HTTP \(status): \(description)"
+        case .rateLimited(let retryAfterSeconds):
+            return "Rate limited: retry after \(Int(retryAfterSeconds))s"
+        case .decoding:
+            return "Decoding failed"
+        case .botApi(let errorCode, let description):
+            return "Telegram \(errorCode): \(description)"
+        case .transport(let message):
+            return message
+        }
     }
 }

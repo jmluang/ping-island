@@ -1,8 +1,22 @@
 import Foundation
 
 protocol TelegramPolling: Sendable {
-    func start(handler: @escaping @Sendable (TelegramUpdate) async -> Void) async
+    func start(
+        handler: @escaping @Sendable (TelegramUpdate) async -> Void,
+        diagnosticsHandler: @escaping @Sendable (TelegramPollerDiagnosticsEvent) async -> Void
+    ) async
     func stop() async
+}
+
+extension TelegramPolling {
+    func start(handler: @escaping @Sendable (TelegramUpdate) async -> Void) async {
+        await start(handler: handler, diagnosticsHandler: { _ in })
+    }
+}
+
+enum TelegramPollerDiagnosticsEvent: Equatable, Sendable {
+    case success(at: Date)
+    case failure(TelegramAPIError, at: Date)
 }
 
 actor TelegramLongPoller: TelegramPolling {
@@ -32,13 +46,16 @@ actor TelegramLongPoller: TelegramPolling {
         pollingTask != nil
     }
 
-    func start(handler: @escaping @Sendable (TelegramUpdate) async -> Void) async {
+    func start(
+        handler: @escaping @Sendable (TelegramUpdate) async -> Void,
+        diagnosticsHandler: @escaping @Sendable (TelegramPollerDiagnosticsEvent) async -> Void
+    ) async {
         guard pollingTask == nil else {
             return
         }
 
         pollingTask = Task { [weak self] in
-            await self?.poll(handler: handler)
+            await self?.poll(handler: handler, diagnosticsHandler: diagnosticsHandler)
         }
     }
 
@@ -47,7 +64,10 @@ actor TelegramLongPoller: TelegramPolling {
         pollingTask = nil
     }
 
-    private func poll(handler: @escaping @Sendable (TelegramUpdate) async -> Void) async {
+    private func poll(
+        handler: @escaping @Sendable (TelegramUpdate) async -> Void,
+        diagnosticsHandler: @escaping @Sendable (TelegramPollerDiagnosticsEvent) async -> Void
+    ) async {
         var offset = loadOffset()
         var retryDelay: TimeInterval = 1
 
@@ -60,6 +80,7 @@ actor TelegramLongPoller: TelegramPolling {
 
             switch result {
             case .success(let updates):
+                await diagnosticsHandler(.success(at: Date()))
                 retryDelay = 1
 
                 if let nextOffset = updates.map(\.updateId).max().map({ $0 + 1 }) {
@@ -71,6 +92,7 @@ actor TelegramLongPoller: TelegramPolling {
                     await handler(update)
                 }
             case .failure(let error):
+                await diagnosticsHandler(.failure(error, at: Date()))
                 if error.isUnauthorized {
                     pollingTask = nil
                     await onInvalidToken()

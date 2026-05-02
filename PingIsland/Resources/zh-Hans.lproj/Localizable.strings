@@ -483,6 +483,19 @@
 "Telegram.Settings.Pairing.Idle" = "打开 5 分钟配对窗口，然后向 bot 发送任意消息。";
 "Telegram.Settings.Pairing.Opening" = "正在打开配对窗口...";
 "Telegram.Settings.Pairing.Open" = "配对窗口已打开，5 分钟内有效。";
+"Telegram.Diagnostics.Title" = "诊断";
+"Telegram.Diagnostics.Description" = "查看已配对 bot 的轮询和消息状态。";
+"Telegram.Diagnostics.LastGetUpdates" = "上次 getUpdates";
+"Telegram.Diagnostics.LastError" = "最近错误";
+"Telegram.Diagnostics.InFlightMessages" = "进行中消息";
+"Telegram.Diagnostics.None" = "无";
+"Telegram.Diagnostics.Never" = "从未";
+"Telegram.Diagnostics.SendTest" = "发送测试通知";
+"Telegram.Diagnostics.Sending" = "发送中...";
+"Telegram.Diagnostics.Sent" = "已发送";
+"Telegram.Diagnostics.Failed" = "发送失败";
+"Telegram.Diagnostics.TestMessage" = "Ping Island 测试 🛎";
+"Telegram.Diagnostics.NotReady" = "Telegram 尚未就绪";
 
 "Telegram.Button.AllowOnce" = "Allow Once";
 "Telegram.Button.Deny" = "Deny";

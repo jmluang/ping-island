@@ -258,6 +258,52 @@ final class TelegramServiceLifecycleTests: XCTestCase {
         XCTAssertEqual(gcFactory.collectors.first?.collectCount, 1)
     }
 
+    func testPollerDiagnosticsEventsUpdatePublishedState() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let factory = FakeTelegramPollerFactory()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: 7),
+            pollerFactory: { await factory.makePoller($0) }
+        )
+
+        await service.refresh()
+        let poller = await factory.poller(at: 0)
+        await poller.emitDiagnostics(.success(at: Date(timeIntervalSince1970: 1_775_000_100)))
+        XCTAssertEqual(service.diagnostics.lastSuccessfulGetUpdatesAt, Date(timeIntervalSince1970: 1_775_000_100))
+        XCTAssertNil(service.diagnostics.lastError)
+
+        await poller.emitDiagnostics(.failure(.transport("offline"), at: Date(timeIntervalSince1970: 1_775_000_200)))
+        XCTAssertEqual(service.diagnostics.lastError, "offline")
+    }
+
+    func testSendTestNotificationUsesCurrentTokenAndAuthorizedChat() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let client = FakeTelegramServiceMessagingClient()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: 7),
+            pollerFactory: { _ in FakeTelegramPolling() },
+            messagingClientFactory: { token in
+                client.tokens.append(token)
+                return client
+            }
+        )
+
+        let result = await service.sendTestNotification()
+
+        if case .failure(let error) = result {
+            XCTFail("Expected success, got \(error)")
+        }
+        XCTAssertEqual(client.tokens, ["123:abc"])
+        XCTAssertEqual(client.sentMessages.map(\.chatId), [7])
+        XCTAssertEqual(client.sentMessages.map(\.text), [TelegramL10n.string("Telegram.Diagnostics.TestMessage")])
+    }
+
     private func makeDefaults(
         _ testName: StaticString = #function
     ) -> UserDefaults {
@@ -296,10 +342,15 @@ private actor FakeTelegramPolling: TelegramPolling {
     private(set) var startCount = 0
     private(set) var stopCount = 0
     private var handler: (@Sendable (TelegramUpdate) async -> Void)?
+    private var diagnosticsHandler: (@Sendable (TelegramPollerDiagnosticsEvent) async -> Void)?
 
-    func start(handler: @escaping @Sendable (TelegramUpdate) async -> Void) async {
+    func start(
+        handler: @escaping @Sendable (TelegramUpdate) async -> Void,
+        diagnosticsHandler: @escaping @Sendable (TelegramPollerDiagnosticsEvent) async -> Void
+    ) async {
         startCount += 1
         self.handler = handler
+        self.diagnosticsHandler = diagnosticsHandler
     }
 
     func stop() async {
@@ -308,6 +359,45 @@ private actor FakeTelegramPolling: TelegramPolling {
 
     func emit(_ update: TelegramUpdate) async {
         await handler?(update)
+    }
+
+    func emitDiagnostics(_ event: TelegramPollerDiagnosticsEvent) async {
+        await diagnosticsHandler?(event)
+    }
+}
+
+@MainActor
+private final class FakeTelegramServiceMessagingClient: TelegramMessagingClient {
+    struct SentMessage {
+        let chatId: Int64
+        let text: String
+    }
+
+    var tokens: [String] = []
+    private(set) var sentMessages: [SentMessage] = []
+
+    func sendMessage(
+        chatId: Int64,
+        text: String,
+        replyMarkup: TelegramInlineKeyboardMarkup?,
+        disableNotification: Bool
+    ) async -> Result<TelegramMessage, TelegramAPIError> {
+        sentMessages.append(.init(chatId: chatId, text: text))
+        return .success(.init(
+            messageId: 1,
+            date: 1_775_000_000,
+            chat: .init(id: chatId, type: "private"),
+            text: text
+        ))
+    }
+
+    func editMessageText(
+        chatId: Int64,
+        messageId: Int64,
+        text: String,
+        replyMarkup: TelegramInlineKeyboardMarkup?
+    ) async -> Result<TelegramMessage, TelegramAPIError> {
+        .failure(.transport("not implemented"))
     }
 }
 

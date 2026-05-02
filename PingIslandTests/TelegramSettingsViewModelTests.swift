@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import Ping_Island
 
 @MainActor
@@ -134,6 +135,31 @@ final class TelegramSettingsViewModelTests: XCTestCase {
         XCTAssertFalse(reloaded.completionEvents)
         XCTAssertTrue(reloaded.errorEvents)
         XCTAssertTrue(reloaded.limitEvents)
+    }
+
+    func testDiagnosticsPublisherUpdatesViewModelAndTestNotificationState() async {
+        let diagnostics = PassthroughSubject<TelegramDiagnosticsState, Never>()
+        var sendCount = 0
+        let viewModel = TelegramSettingsViewModel(
+            tokenStore: FakeTelegramTokenStore(),
+            diagnosticsPublisher: diagnostics.eraseToAnyPublisher(),
+            sendTestNotification: {
+                sendCount += 1
+                return .success(())
+            }
+        )
+        let state = TelegramDiagnosticsState(
+            lastSuccessfulGetUpdatesAt: Date(timeIntervalSince1970: 1_775_000_000),
+            lastError: "offline",
+            inFlightMessageCount: 2
+        )
+
+        diagnostics.send(state)
+        await viewModel.sendTestNotification()
+
+        XCTAssertEqual(viewModel.diagnostics, state)
+        XCTAssertEqual(viewModel.testNotificationState, .sent)
+        XCTAssertEqual(sendCount, 1)
     }
 
     private func makeDefaults(testName: String = #function) -> UserDefaults {

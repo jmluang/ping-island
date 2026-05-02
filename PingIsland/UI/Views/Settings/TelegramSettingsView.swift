@@ -17,9 +17,18 @@ final class TelegramSettingsViewModel: ObservableObject {
         case open
     }
 
+    enum TestNotificationState: Equatable {
+        case idle
+        case sending
+        case sent
+        case failed
+    }
+
     @Published var tokenInput: String
     @Published private(set) var connectionState: ConnectionState = .idle
     @Published private(set) var pairingState: PairingState = .idle
+    @Published private(set) var testNotificationState: TestNotificationState = .idle
+    @Published private(set) var diagnostics: TelegramDiagnosticsState
     @Published private(set) var masterEnabled: Bool
     @Published private(set) var permissionEvents: Bool
     @Published private(set) var questionEvents: Bool
@@ -30,6 +39,8 @@ final class TelegramSettingsViewModel: ObservableObject {
     private var settings: TelegramSettings
     private let clientFactory: (String) -> TelegramGetMeClient
     private let beginPairing: () async -> Void
+    private let sendTestNotificationAction: () async -> Result<Void, TelegramAPIError>
+    private var cancellables: Set<AnyCancellable> = []
 
     init(
         tokenStore: TelegramTokenStoring = TelegramTokenStore(),
@@ -37,18 +48,30 @@ final class TelegramSettingsViewModel: ObservableObject {
         clientFactory: @escaping (String) -> TelegramGetMeClient = { TelegramAPIClient(token: $0) },
         beginPairing: @escaping () async -> Void = {
             await TelegramService.shared.beginPairing()
-        }
+        },
+        diagnosticsPublisher: AnyPublisher<TelegramDiagnosticsState, Never>? = nil,
+        sendTestNotification: (() async -> Result<Void, TelegramAPIError>)? = nil
     ) {
         self.tokenStore = tokenStore
         self.settings = settings
         self.clientFactory = clientFactory
         self.beginPairing = beginPairing
+        self.sendTestNotificationAction = sendTestNotification ?? {
+            await TelegramService.shared.sendTestNotification()
+        }
         self.tokenInput = (try? tokenStore.load()) ?? ""
+        self.diagnostics = TelegramService.shared.diagnostics
         self.masterEnabled = settings.masterEnabled
         self.permissionEvents = settings.permissionEvents
         self.questionEvents = settings.questionEvents
         self.completionEvents = settings.completionEvents
         self.errorAndLimitEvents = settings.errorEvents && settings.limitEvents
+
+        (diagnosticsPublisher ?? TelegramService.shared.$diagnostics.eraseToAnyPublisher())
+            .sink { [weak self] diagnostics in
+                self?.diagnostics = diagnostics
+            }
+            .store(in: &cancellables)
     }
 
     func saveAndTest() async {
@@ -82,6 +105,16 @@ final class TelegramSettingsViewModel: ObservableObject {
         pairingState = .opening
         await beginPairing()
         pairingState = .open
+    }
+
+    func sendTestNotification() async {
+        testNotificationState = .sending
+        switch await sendTestNotificationAction() {
+        case .success:
+            testNotificationState = .sent
+        case .failure:
+            testNotificationState = .failed
+        }
     }
 
     func setMasterEnabled(_ isEnabled: Bool) {
@@ -160,6 +193,12 @@ struct TelegramSettingsView: View {
                 .padding(.vertical, 4)
 
             notificationSection
+
+            Divider()
+                .background(Color.white.opacity(0.12))
+                .padding(.vertical, 4)
+
+            diagnosticsSection
 
             Divider()
                 .background(Color.white.opacity(0.12))
@@ -267,6 +306,63 @@ struct TelegramSettingsView: View {
         }
     }
 
+    private var diagnosticsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(appLocalized: "Telegram.Diagnostics.Title")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+
+                Text(appLocalized: "Telegram.Diagnostics.Description")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.white.opacity(0.58))
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                diagnosticsRow(
+                    title: AppLocalization.string("Telegram.Diagnostics.LastGetUpdates"),
+                    value: lastGetUpdatesText
+                )
+                diagnosticsRow(
+                    title: AppLocalization.string("Telegram.Diagnostics.LastError"),
+                    value: viewModel.diagnostics.lastError ?? AppLocalization.string("Telegram.Diagnostics.None")
+                )
+                diagnosticsRow(
+                    title: AppLocalization.string("Telegram.Diagnostics.InFlightMessages"),
+                    value: "\(viewModel.diagnostics.inFlightMessageCount)"
+                )
+            }
+
+            Button {
+                Task { await viewModel.sendTestNotification() }
+            } label: {
+                if viewModel.testNotificationState == .sending {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text(testNotificationButtonText)
+                        .font(.system(size: 13, weight: .semibold))
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(viewModel.testNotificationState == .sending)
+        }
+    }
+
+    private func diagnosticsRow(title: String, value: String) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.58))
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white.opacity(0.82))
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
     private var statusText: String {
         switch viewModel.connectionState {
         case .idle:
@@ -303,6 +399,30 @@ struct TelegramSettingsView: View {
             return AppLocalization.string("Telegram.Settings.Pairing.Opening")
         case .open:
             return AppLocalization.string("Telegram.Settings.Pairing.Open")
+        }
+    }
+
+    private var lastGetUpdatesText: String {
+        guard let date = viewModel.diagnostics.lastSuccessfulGetUpdatesAt else {
+            return AppLocalization.string("Telegram.Diagnostics.Never")
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        return formatter.string(from: date)
+    }
+
+    private var testNotificationButtonText: String {
+        switch viewModel.testNotificationState {
+        case .idle:
+            return AppLocalization.string("Telegram.Diagnostics.SendTest")
+        case .sending:
+            return AppLocalization.string("Telegram.Diagnostics.Sending")
+        case .sent:
+            return AppLocalization.string("Telegram.Diagnostics.Sent")
+        case .failed:
+            return AppLocalization.string("Telegram.Diagnostics.Failed")
         }
     }
 }

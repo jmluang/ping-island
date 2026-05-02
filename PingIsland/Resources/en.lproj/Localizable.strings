@@ -488,6 +488,19 @@
 "Telegram.Settings.Pairing.Idle" = "Open a 5-minute window, then send any message to the bot.";
 "Telegram.Settings.Pairing.Opening" = "Opening pairing window...";
 "Telegram.Settings.Pairing.Open" = "Pairing window is open for 5 minutes.";
+"Telegram.Diagnostics.Title" = "Diagnostics";
+"Telegram.Diagnostics.Description" = "Live polling and message state for the paired bot.";
+"Telegram.Diagnostics.LastGetUpdates" = "Last getUpdates";
+"Telegram.Diagnostics.LastError" = "Last error";
+"Telegram.Diagnostics.InFlightMessages" = "In-flight messages";
+"Telegram.Diagnostics.None" = "None";
+"Telegram.Diagnostics.Never" = "Never";
+"Telegram.Diagnostics.SendTest" = "Send test notification";
+"Telegram.Diagnostics.Sending" = "Sending...";
+"Telegram.Diagnostics.Sent" = "Sent";
+"Telegram.Diagnostics.Failed" = "Failed";
+"Telegram.Diagnostics.TestMessage" = "Ping Island test 🛎";
+"Telegram.Diagnostics.NotReady" = "Telegram is not ready";
 
 "Telegram.Button.AllowOnce" = "Allow Once";
 "Telegram.Button.Deny" = "Deny";
