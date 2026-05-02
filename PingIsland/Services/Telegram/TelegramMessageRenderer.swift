@@ -5,6 +5,7 @@ enum TelegramAttentionPayload: Equatable {
     case question(intervention: SessionIntervention)
     case completion
     case error(toolId: String)
+    case limit
 
     var category: TelegramEventCategory {
         switch self {
@@ -16,6 +17,8 @@ enum TelegramAttentionPayload: Equatable {
             return .completion
         case .error:
             return .error
+        case .limit:
+            return .limit
         }
     }
 
@@ -97,6 +100,8 @@ enum TelegramMessageRenderer {
             return renderStatus(text: completionText(for: session))
         case .error(let toolId):
             return renderStatus(text: errorText(for: session, toolId: toolId))
+        case .limit:
+            return renderStatus(text: limitText(for: session))
         }
     }
 
@@ -299,6 +304,17 @@ enum TelegramMessageRenderer {
             "Agent: \(session.messageBadgeDisplayName)",
             "Project: \(session.projectName)",
             "Tool ID: \(toolId)",
+            "CWD: \(session.cwd)",
+            "Session: \(session.sessionId)"
+        ].joined(separator: "\n")
+    }
+
+    private static func limitText(for session: SessionState) -> String {
+        [
+            "Resource limit reached",
+            "Agent: \(session.messageBadgeDisplayName)",
+            "Project: \(session.projectName)",
+            "Status: compacting context",
             "CWD: \(session.cwd)",
             "Session: \(session.sessionId)"
         ].joined(separator: "\n")

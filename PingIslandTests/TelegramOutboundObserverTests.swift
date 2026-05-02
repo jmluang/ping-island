@@ -135,6 +135,34 @@ final class TelegramOutboundObserverTests: XCTestCase {
         XCTAssertTrue(client.sentMessages.isEmpty)
     }
 
+    func testProcessSnapshotEmitsLimitWhenSessionStartsCompacting() async {
+        let client = FakeTelegramMessagingClient()
+        let observer = makeObserver(client: client)
+        let beforeLimit = makeSession(phase: .processing)
+        let afterLimit = makeSession(phase: .compacting)
+
+        await observer.processSnapshot([beforeLimit])
+        await observer.processSnapshot([afterLimit])
+
+        XCTAssertEqual(client.sentMessages.count, 1)
+        XCTAssertEqual(client.sentMessages.first?.replyMarkup, nil)
+        XCTAssertEqual(client.sentMessages.first?.text.contains("Resource limit reached"), true)
+    }
+
+    func testProcessSnapshotSuppressesLimitWhenLimitEventsAreDisabled() async {
+        let client = FakeTelegramMessagingClient()
+        let observer = makeObserver(client: client, categoryEnabled: { category in
+            category != .limit
+        })
+        let beforeLimit = makeSession(phase: .processing)
+        let afterLimit = makeSession(phase: .compacting)
+
+        await observer.processSnapshot([beforeLimit])
+        await observer.processSnapshot([afterLimit])
+
+        XCTAssertTrue(client.sentMessages.isEmpty)
+    }
+
     func testRemovedAttentionWithoutRecentResponseEditsWithdrawnAndDropsRegistries() async throws {
         let client = FakeTelegramMessagingClient()
         let stateStore = InMemoryTelegramStateStore()

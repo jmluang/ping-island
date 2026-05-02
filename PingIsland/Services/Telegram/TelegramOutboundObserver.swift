@@ -26,6 +26,7 @@ final class TelegramOutboundObserver {
     private var hasPrimedStatusTransitions = false
     private var previousCompletedIds: Set<String> = []
     private var previousErrorIds: Set<String> = []
+    private var previousLimitIds: Set<String> = []
     private var cancellables: Set<AnyCancellable> = []
 
     init(
@@ -78,6 +79,7 @@ final class TelegramOutboundObserver {
         hasPrimedStatusTransitions = false
         previousCompletedIds.removeAll()
         previousErrorIds.removeAll()
+        previousLimitIds.removeAll()
     }
 
     func recordResponse(_ response: InterventionResponse) {
@@ -179,17 +181,26 @@ final class TelegramOutboundObserver {
             }
         }
         let errorIds = Set(errorEvents.map(\.id))
+        let limitSessions = sessions.filter { $0.phase == .compacting }
+        let limitIds = Set(limitSessions.map(\.stableId))
 
         guard hasPrimedStatusTransitions else {
             hasPrimedStatusTransitions = true
             previousCompletedIds = completedIds
             previousErrorIds = errorIds
+            previousLimitIds = limitIds
             return
         }
 
         if categoryEnabled(.error) {
             for event in errorEvents where !previousErrorIds.contains(event.id) {
                 await sendStatus(session: event.session, payload: .error(toolId: event.toolId))
+            }
+        }
+
+        if categoryEnabled(.limit) {
+            for session in limitSessions where !previousLimitIds.contains(session.stableId) {
+                await sendStatus(session: session, payload: .limit)
             }
         }
 
@@ -201,6 +212,7 @@ final class TelegramOutboundObserver {
 
         previousCompletedIds = completedIds
         previousErrorIds = errorIds
+        previousLimitIds = limitIds
     }
 
     private func sendStatus(session: SessionState, payload: TelegramAttentionPayload) async {
