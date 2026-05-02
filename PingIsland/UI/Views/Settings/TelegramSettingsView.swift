@@ -39,6 +39,7 @@ final class TelegramSettingsViewModel: ObservableObject {
     private var settings: TelegramSettings
     private let clientFactory: (String) -> TelegramGetMeClient
     private let beginPairing: () async -> Void
+    private let refreshService: () async -> Void
     private let sendTestNotificationAction: () async -> Result<Void, TelegramAPIError>
     private var cancellables: Set<AnyCancellable> = []
 
@@ -49,6 +50,9 @@ final class TelegramSettingsViewModel: ObservableObject {
         beginPairing: @escaping () async -> Void = {
             await TelegramService.shared.beginPairing()
         },
+        refreshService: @escaping () async -> Void = {
+            await TelegramService.shared.refresh()
+        },
         diagnosticsPublisher: AnyPublisher<TelegramDiagnosticsState, Never>? = nil,
         sendTestNotification: (() async -> Result<Void, TelegramAPIError>)? = nil
     ) {
@@ -56,6 +60,7 @@ final class TelegramSettingsViewModel: ObservableObject {
         self.settings = settings
         self.clientFactory = clientFactory
         self.beginPairing = beginPairing
+        self.refreshService = refreshService
         self.sendTestNotificationAction = sendTestNotification ?? {
             await TelegramService.shared.sendTestNotification()
         }
@@ -93,6 +98,7 @@ final class TelegramSettingsViewModel: ObservableObject {
         switch await clientFactory(token).getMe() {
         case .success(let user):
             connectionState = .ok(user.username ?? "\(user.id)")
+            await refreshService()
         case .failure(.http(status: 401, description: _)),
              .failure(.botApi(errorCode: 401, description: _)):
             connectionState = .invalidToken

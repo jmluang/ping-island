@@ -45,6 +45,31 @@ final class TelegramServiceLifecycleTests: XCTestCase {
         XCTAssertEqual(startCount, 1)
     }
 
+    func testMasterOnPlusTokenWithoutAuthStillStartsPollerForPairing() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let outboundFactory = FakeTelegramOutboundObserverFactory()
+        let factory = FakeTelegramPollerFactory()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: nil),
+            pollerFactory: { await factory.makePoller($0) },
+            outboundObserverFactory: { token, chatId in
+                outboundFactory.makeObserver(token: token, chatId: chatId)
+            }
+        )
+
+        await service.refresh()
+
+        let poller = await factory.poller(at: 0)
+        let tokens = await factory.tokens()
+        let startCount = await poller.startCount
+        XCTAssertEqual(tokens, ["123:abc"])
+        XCTAssertEqual(startCount, 1)
+        XCTAssertTrue(outboundFactory.requests.isEmpty)
+    }
+
     func testMasterOnPlusTokenPlusAuthOutboundObserverStarts() async {
         var settings = TelegramSettings(defaults: makeDefaults())
         settings.masterEnabled = true
@@ -125,6 +150,68 @@ final class TelegramServiceLifecycleTests: XCTestCase {
 
         let openedTimeouts = await authState.openedTimeouts()
         XCTAssertEqual(openedTimeouts, [300])
+    }
+
+    func testBeginPairingRefreshesPollerAfterTokenIsAvailable() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let authState = FakeTelegramServiceAuthState()
+        let factory = FakeTelegramPollerFactory()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: FakeTelegramServiceStateStore(chatId: nil),
+            authState: authState,
+            pollerFactory: { await factory.makePoller($0) }
+        )
+
+        await service.beginPairing()
+
+        let openedTimeouts = await authState.openedTimeouts()
+        let poller = await factory.poller(at: 0)
+        let startCount = await poller.startCount
+        XCTAssertEqual(openedTimeouts, [300])
+        XCTAssertEqual(startCount, 1)
+    }
+
+    func testCapturedPairingMessageStartsChatDependentServices() async {
+        var settings = TelegramSettings(defaults: makeDefaults())
+        settings.masterEnabled = true
+        let stateStore = InMemoryTelegramStateStore()
+        let authState = TelegramAuthState(
+            stateStore: stateStore,
+            now: { Date(timeIntervalSinceReferenceDate: 10) }
+        )
+        let factory = FakeTelegramPollerFactory()
+        let outboundFactory = FakeTelegramOutboundObserverFactory()
+        let service = TelegramService(
+            settings: settings,
+            tokenStore: FakeTelegramServiceTokenStore(token: "123:abc"),
+            stateStore: stateStore,
+            authState: authState,
+            pollerFactory: { await factory.makePoller($0) },
+            outboundObserverFactory: { token, chatId in
+                outboundFactory.makeObserver(token: token, chatId: chatId)
+            }
+        )
+
+        await service.beginPairing()
+        let poller = await factory.poller(at: 0)
+        await poller.emit(TelegramUpdate(
+            updateId: 1,
+            message: TelegramMessage(
+                messageId: 2,
+                date: 0,
+                chat: TelegramChat(id: 7, type: "private"),
+                text: "/start"
+            ),
+            callbackQuery: nil
+        ))
+
+        XCTAssertEqual((try? stateStore.load())?.auth.chatId, 7)
+        XCTAssertEqual(outboundFactory.requests.map(\.token), ["123:abc"])
+        XCTAssertEqual(outboundFactory.requests.map(\.chatId), [7])
+        XCTAssertEqual(outboundFactory.observers.first?.startCount, 1)
     }
 
     func testInboundMessageDelegatesChatToAuthState() async {

@@ -44,6 +44,29 @@ final class TelegramSettingsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.connectionState, .ok("ping_island_bot"))
     }
 
+    func testSaveAndTestRefreshesServiceAfterSuccessfulTokenValidation() async {
+        let refreshRecorder = ServiceRefreshRecorder()
+        let viewModel = TelegramSettingsViewModel(
+            tokenStore: FakeTelegramTokenStore(),
+            clientFactory: { _ in
+                FakeTelegramGetMeClient(result: .success(TelegramUser(
+                    id: 1,
+                    isBot: true,
+                    username: "ping_island_bot"
+                )))
+            },
+            refreshService: {
+                await refreshRecorder.record()
+            }
+        )
+        viewModel.tokenInput = "123:abc"
+
+        await viewModel.saveAndTest()
+
+        let refreshCount = await refreshRecorder.callCount()
+        XCTAssertEqual(refreshCount, 1)
+    }
+
     func testSaveAndTestMapsUnauthorizedToInvalidToken() async {
         let store = FakeTelegramTokenStore()
         let viewModel = TelegramSettingsViewModel(
@@ -172,6 +195,18 @@ final class TelegramSettingsViewModelTests: XCTestCase {
 }
 
 private actor PairingRecorder {
+    private var calls = 0
+
+    func record() {
+        calls += 1
+    }
+
+    func callCount() -> Int {
+        calls
+    }
+}
+
+private actor ServiceRefreshRecorder {
     private var calls = 0
 
     func record() {

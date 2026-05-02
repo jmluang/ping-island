@@ -113,8 +113,7 @@ final class TelegramService: ObservableObject {
 
     func refresh() async {
         guard settings.masterEnabled,
-              let token = loadedToken(),
-              let chatId = authorizedChatId
+              let token = loadedToken()
         else {
             await stopCurrentPoller()
             stopCallbackGC()
@@ -128,9 +127,14 @@ final class TelegramService: ObservableObject {
         }
 
         ensureInboundDispatcher(token: token)
-        await runRestartSweepIfNeeded(token: token, chatId: chatId)
-        await ensureCallbackGC(token: token)
-        ensureOutboundObserver(token: token, chatId: chatId)
+        if let chatId = authorizedChatId {
+            await runRestartSweepIfNeeded(token: token, chatId: chatId)
+            await ensureCallbackGC(token: token)
+            ensureOutboundObserver(token: token, chatId: chatId)
+        } else {
+            stopCallbackGC()
+            stopOutboundObserver()
+        }
 
         guard poller == nil else {
             return
@@ -151,6 +155,7 @@ final class TelegramService: ObservableObject {
 
     func beginPairing() async {
         await authState.openPairingWindow(timeout: 5 * 60)
+        await refresh()
     }
 
     func sendTestNotification() async -> Result<Void, TelegramAPIError> {
@@ -301,7 +306,10 @@ final class TelegramService: ObservableObject {
             return
         }
 
-        _ = await authState.handleIncomingMessage(from: chatId)
+        let decision = await authState.handleIncomingMessage(from: chatId)
+        if case .captured = decision {
+            await refresh()
+        }
     }
 
     private static func makeDefaultOutboundObserver(token: String, chatId: Int64) -> TelegramOutboundObserving {
