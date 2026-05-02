@@ -4,6 +4,7 @@ enum TelegramAttentionPayload: Equatable {
     case approval(id: String, permission: PermissionContext?, intervention: SessionIntervention?)
     case question(intervention: SessionIntervention)
     case completion
+    case error(toolId: String)
 
     var category: TelegramEventCategory {
         switch self {
@@ -13,6 +14,8 @@ enum TelegramAttentionPayload: Equatable {
             return .question
         case .completion:
             return .completion
+        case .error:
+            return .error
         }
     }
 
@@ -92,6 +95,8 @@ enum TelegramMessageRenderer {
             )
         case .completion:
             return renderStatus(text: completionText(for: session))
+        case .error(let toolId):
+            return renderStatus(text: errorText(for: session, toolId: toolId))
         }
     }
 
@@ -286,6 +291,17 @@ enum TelegramMessageRenderer {
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    private static func errorText(for session: SessionState, toolId: String) -> String {
+        [
+            "Task error",
+            "Agent: \(session.messageBadgeDisplayName)",
+            "Project: \(session.projectName)",
+            "Tool ID: \(toolId)",
+            "CWD: \(session.cwd)",
+            "Session: \(session.sessionId)"
+        ].joined(separator: "\n")
     }
 
     private static func latestAssistantPreview(for session: SessionState) -> String? {

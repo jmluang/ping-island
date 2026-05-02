@@ -100,6 +100,41 @@ final class TelegramOutboundObserverTests: XCTestCase {
         XCTAssertTrue(client.sentMessages.isEmpty)
     }
 
+    func testProcessSnapshotEmitsErrorForNewCompletedErrorTool() async {
+        let client = FakeTelegramMessagingClient()
+        let observer = makeObserver(client: client)
+        let beforeError = makeSession(phase: .processing)
+        let afterError = makeSession(
+            phase: .processing,
+            completedErrorToolIDs: ["tool-error-1"]
+        )
+
+        await observer.processSnapshot([beforeError])
+        await observer.processSnapshot([afterError])
+
+        XCTAssertEqual(client.sentMessages.count, 1)
+        XCTAssertEqual(client.sentMessages.first?.replyMarkup, nil)
+        XCTAssertEqual(client.sentMessages.first?.text.contains("Task error"), true)
+        XCTAssertEqual(client.sentMessages.first?.text.contains("tool-error-1"), true)
+    }
+
+    func testProcessSnapshotSuppressesErrorWhenErrorEventsAreDisabled() async {
+        let client = FakeTelegramMessagingClient()
+        let observer = makeObserver(client: client, categoryEnabled: { category in
+            category != .error
+        })
+        let beforeError = makeSession(phase: .processing)
+        let afterError = makeSession(
+            phase: .processing,
+            completedErrorToolIDs: ["tool-error-1"]
+        )
+
+        await observer.processSnapshot([beforeError])
+        await observer.processSnapshot([afterError])
+
+        XCTAssertTrue(client.sentMessages.isEmpty)
+    }
+
     func testRemovedAttentionWithoutRecentResponseEditsWithdrawnAndDropsRegistries() async throws {
         let client = FakeTelegramMessagingClient()
         let stateStore = InMemoryTelegramStateStore()
@@ -224,7 +259,8 @@ final class TelegramOutboundObserverTests: XCTestCase {
     private func makeSession(
         intervention: SessionIntervention? = nil,
         phase: SessionPhase,
-        chatItems: [ChatHistoryItem] = []
+        chatItems: [ChatHistoryItem] = [],
+        completedErrorToolIDs: Set<String> = []
     ) -> SessionState {
         SessionState(
             sessionId: "session-1",
@@ -233,7 +269,8 @@ final class TelegramOutboundObserverTests: XCTestCase {
             provider: .claude,
             intervention: intervention,
             phase: phase,
-            chatItems: chatItems
+            chatItems: chatItems,
+            completedErrorToolIDs: completedErrorToolIDs
         )
     }
 

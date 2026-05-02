@@ -25,6 +25,7 @@ final class TelegramOutboundObserver {
     private var recentResponses: [String: Date] = [:]
     private var hasPrimedStatusTransitions = false
     private var previousCompletedIds: Set<String> = []
+    private var previousErrorIds: Set<String> = []
     private var cancellables: Set<AnyCancellable> = []
 
     init(
@@ -76,6 +77,7 @@ final class TelegramOutboundObserver {
         recentResponses.removeAll()
         hasPrimedStatusTransitions = false
         previousCompletedIds.removeAll()
+        previousErrorIds.removeAll()
     }
 
     func recordResponse(_ response: InterventionResponse) {
@@ -167,11 +169,28 @@ final class TelegramOutboundObserver {
     private func emitStatusNotifications(from sessions: [SessionState]) async {
         let completedSessions = sessions.filter(isCompletedReadySession)
         let completedIds = Set(completedSessions.map(\.stableId))
+        let errorEvents = sessions.flatMap { session in
+            session.completedErrorToolIDs.map { toolId in
+                StatusErrorEvent(
+                    id: "\(session.sessionId):\(toolId)",
+                    session: session,
+                    toolId: toolId
+                )
+            }
+        }
+        let errorIds = Set(errorEvents.map(\.id))
 
         guard hasPrimedStatusTransitions else {
             hasPrimedStatusTransitions = true
             previousCompletedIds = completedIds
+            previousErrorIds = errorIds
             return
+        }
+
+        if categoryEnabled(.error) {
+            for event in errorEvents where !previousErrorIds.contains(event.id) {
+                await sendStatus(session: event.session, payload: .error(toolId: event.toolId))
+            }
         }
 
         if categoryEnabled(.completion) {
@@ -181,6 +200,7 @@ final class TelegramOutboundObserver {
         }
 
         previousCompletedIds = completedIds
+        previousErrorIds = errorIds
     }
 
     private func sendStatus(session: SessionState, payload: TelegramAttentionPayload) async {
@@ -331,6 +351,12 @@ final class TelegramOutboundObserver {
         let interventionId: String
         let payload: TelegramAttentionPayload
         let category: TelegramEventCategory
+    }
+
+    private struct StatusErrorEvent {
+        let id: String
+        let session: SessionState
+        let toolId: String
     }
 }
 
