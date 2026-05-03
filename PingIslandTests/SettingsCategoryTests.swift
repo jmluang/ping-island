@@ -5,7 +5,7 @@ final class SettingsCategoryTests: XCTestCase {
     func testTelegramCategorySitsBetweenIntegrationAndRemote() {
         XCTAssertEqual(
             SettingsCategory.allCases,
-            [.general, .shortcuts, .display, .mascot, .sound, .integration, .telegram, .remote, .about]
+            [.general, .shortcuts, .display, .mascot, .sound, .integration, .telegram, .remote, .labs, .about]
         )
     }
 
