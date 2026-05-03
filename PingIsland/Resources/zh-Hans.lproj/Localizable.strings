@@ -497,12 +497,14 @@
 "Telegram.Diagnostics.TestMessage" = "Ping Island 测试 🛎";
 "Telegram.Diagnostics.NotReady" = "Telegram 尚未就绪";
 
-"Telegram.Button.AllowOnce" = "Allow Once";
-"Telegram.Button.Deny" = "Deny";
-"Telegram.Button.AllowSession" = "Allow Session";
+"Telegram.Button.AllowOnce" = "允许一次";
+"Telegram.Button.Deny" = "拒绝";
+"Telegram.Button.AllowSession" = "允许本次会话";
+"Telegram.Message.CallbackAccepted" = "已发送到 Mac";
 "Telegram.Message.TruncatedSuffix" = "…（已截断，请在刘海中查看完整内容）";
 "Telegram.Message.PermissionFallback" = "权限";
 "Telegram.Message.ApprovalRequested" = "权限请求";
+"Telegram.Message.ApprovalRequestedBy" = "%@ 请求批准";
 "Telegram.Message.QuestionRequested" = "问题请求";
 "Telegram.Message.TaskCompleted" = "任务已完成";
 "Telegram.Message.TaskError" = "任务错误";
@@ -531,7 +533,7 @@
 "Telegram.Message.Expired" = "⏱ 已过期";
 "Telegram.Message.FinalMac" = "✅ %@ · 在 Mac 上响应于 %@";
 "Telegram.Message.FinalTelegram" = "✅ %@ · 来自 Telegram · %@";
-"Telegram.Message.Decision.ApprovedOnce" = "Approved once";
-"Telegram.Message.Decision.ApprovedForSession" = "Approved for session";
-"Telegram.Message.Decision.Denied" = "Denied";
-"Telegram.Message.Decision.Answered" = "Answered";
+"Telegram.Message.Decision.ApprovedOnce" = "已允许一次";
+"Telegram.Message.Decision.ApprovedForSession" = "已允许本次会话";
+"Telegram.Message.Decision.Denied" = "已拒绝";
+"Telegram.Message.Decision.Answered" = "已回答";

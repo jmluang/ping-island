@@ -17,13 +17,17 @@ final class TelegramInboundDispatcherTests: XCTestCase {
 
     func testAllowOnceCallbackDispatchesApproveThroughHub() async throws {
         let stateStore = InMemoryTelegramStateStore(makeState(action: .allowOnce))
+        let client = FakeTelegramInboundClient()
         let hub = FakeTelegramInboundHub()
-        let dispatcher = makeDispatcher(stateStore: stateStore, hub: hub)
+        let dispatcher = makeDispatcher(stateStore: stateStore, client: client, hub: hub)
 
         await dispatcher.handle(makeUpdate(callbackData: "v1|tok1|allow_once"))
 
         XCTAssertEqual(hub.approveCalls, [
             .init(sessionId: "session-1", forSession: false, source: .telegram)
+        ])
+        XCTAssertEqual(client.answeredCallbacks, [
+            .init(callbackQueryId: "callback-1", text: TelegramL10n.string("Telegram.Message.CallbackAccepted"))
         ])
     }
 
@@ -60,6 +64,9 @@ final class TelegramInboundDispatcherTests: XCTestCase {
 
         await dispatcher.handle(makeUpdate(callbackData: "v1|missing|allow_once"))
 
+        XCTAssertEqual(client.answeredCallbacks, [
+            .init(callbackQueryId: "callback-1", text: TelegramL10n.string("Telegram.Message.AlreadyHandled"))
+        ])
         XCTAssertEqual(client.editedMessages.map(\.text), [
             TelegramL10n.string("Telegram.Message.AlreadyHandled")
         ])
@@ -73,6 +80,9 @@ final class TelegramInboundDispatcherTests: XCTestCase {
 
         await dispatcher.handle(makeUpdate(callbackData: "v1|tok1|allow_once"))
 
+        XCTAssertEqual(client.answeredCallbacks, [
+            .init(callbackQueryId: "callback-1", text: TelegramL10n.string("Telegram.Message.MacNotOnline"))
+        ])
         XCTAssertEqual(client.editedMessages.map(\.text), [
             TelegramL10n.string("Telegram.Message.MacNotOnline")
         ])
@@ -86,6 +96,9 @@ final class TelegramInboundDispatcherTests: XCTestCase {
 
         await dispatcher.handle(makeUpdate(callbackData: "v1|tok1|allow_once"))
 
+        XCTAssertEqual(client.answeredCallbacks, [
+            .init(callbackQueryId: "callback-1", text: TelegramL10n.string("Telegram.Message.AlreadyHandled"))
+        ])
         XCTAssertEqual(client.editedMessages.map(\.text), [
             TelegramL10n.string("Telegram.Message.AlreadyHandled")
         ])
@@ -149,7 +162,13 @@ private final class FakeTelegramInboundClient: TelegramMessagingClient {
         let text: String
     }
 
+    struct AnsweredCallback: Equatable {
+        let callbackQueryId: String
+        let text: String?
+    }
+
     private(set) var editedMessages: [EditedMessage] = []
+    private(set) var answeredCallbacks: [AnsweredCallback] = []
 
     func sendMessage(
         chatId: Int64,
@@ -173,6 +192,14 @@ private final class FakeTelegramInboundClient: TelegramMessagingClient {
             chat: .init(id: chatId, type: "private"),
             text: text
         ))
+    }
+
+    func answerCallbackQuery(
+        callbackQueryId: String,
+        text: String?
+    ) async -> Result<Bool, TelegramAPIError> {
+        answeredCallbacks.append(.init(callbackQueryId: callbackQueryId, text: text))
+        return .success(true)
     }
 }
 

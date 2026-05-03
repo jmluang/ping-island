@@ -505,9 +505,11 @@
 "Telegram.Button.AllowOnce" = "Allow Once";
 "Telegram.Button.Deny" = "Deny";
 "Telegram.Button.AllowSession" = "Allow Session";
+"Telegram.Message.CallbackAccepted" = "Sent to your Mac";
 "Telegram.Message.TruncatedSuffix" = "… (truncated; open notch for full)";
 "Telegram.Message.PermissionFallback" = "Permission";
 "Telegram.Message.ApprovalRequested" = "Approval requested";
+"Telegram.Message.ApprovalRequestedBy" = "%@ requests approval";
 "Telegram.Message.QuestionRequested" = "Question requested";
 "Telegram.Message.TaskCompleted" = "Task completed";
 "Telegram.Message.TaskError" = "Task error";

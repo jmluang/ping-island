@@ -58,6 +58,7 @@ final class TelegramInboundDispatcher {
         }
 
         guard let resolution = try? await callbackRegistry.resolve(token: token) else {
+            await answer(callbackQuery, text: TelegramL10n.string("Telegram.Message.AlreadyHandled"))
             await edit(message: message, chatId: chatId, text: TelegramL10n.string("Telegram.Message.AlreadyHandled"))
             return
         }
@@ -65,10 +66,13 @@ final class TelegramInboundDispatcher {
         let result = await dispatch(resolution)
         switch result {
         case .success:
+            await answer(callbackQuery, text: TelegramL10n.string("Telegram.Message.CallbackAccepted"))
             return
         case .failure(.dispatcherUnavailable):
+            await answer(callbackQuery, text: TelegramL10n.string("Telegram.Message.MacNotOnline"))
             await edit(message: message, chatId: chatId, text: TelegramL10n.string("Telegram.Message.MacNotOnline"))
         case .failure(.actionNotHandled):
+            await answer(callbackQuery, text: TelegramL10n.string("Telegram.Message.AlreadyHandled"))
             await edit(message: message, chatId: chatId, text: TelegramL10n.string("Telegram.Message.AlreadyHandled"))
         }
     }
@@ -127,6 +131,10 @@ final class TelegramInboundDispatcher {
             text: text,
             replyMarkup: nil
         )
+    }
+
+    private func answer(_ callbackQuery: TelegramCallbackQuery, text: String) async {
+        _ = await client.answerCallbackQuery(callbackQueryId: callbackQuery.id, text: text)
     }
 }
 

@@ -40,6 +40,20 @@ protocol TelegramMessagingClient {
         text: String,
         replyMarkup: TelegramInlineKeyboardMarkup?
     ) async -> Result<TelegramMessage, TelegramAPIError>
+
+    func answerCallbackQuery(
+        callbackQueryId: String,
+        text: String?
+    ) async -> Result<Bool, TelegramAPIError>
+}
+
+extension TelegramMessagingClient {
+    func answerCallbackQuery(
+        callbackQueryId: String,
+        text: String?
+    ) async -> Result<Bool, TelegramAPIError> {
+        .success(false)
+    }
 }
 
 struct TelegramUser: Codable, Equatable {

@@ -18,7 +18,7 @@ final class TelegramMessageRendererTests: XCTestCase {
         )
 
         XCTAssertEqual(rendered.text, [
-            TelegramL10n.string("Telegram.Message.ApprovalRequested"),
+            TelegramL10n.format("Telegram.Message.ApprovalRequestedBy", "Claude Code"),
             TelegramL10n.format("Telegram.Message.Field.Agent", "Claude Code"),
             TelegramL10n.format("Telegram.Message.Field.Project", "ping-island"),
             TelegramL10n.format("Telegram.Message.Field.Tool", "Bash"),
@@ -141,7 +141,16 @@ final class TelegramMessageRendererTests: XCTestCase {
     func testRenderAllowsOtherQuestionRoutesBackToMac() {
         let rendered = renderQuestionFallback(makeQuestionIntervention(allowsOther: true))
 
-        XCTAssertEqual(rendered.text, TelegramL10n.string("Telegram.Message.QuestionFallback.FreeText"))
+        XCTAssertEqual(rendered.text, [
+            TelegramL10n.string("Telegram.Message.QuestionFallback.FreeText"),
+            TelegramL10n.format("Telegram.Message.Field.Agent", "Claude Code"),
+            TelegramL10n.format("Telegram.Message.Field.Project", "ping-island"),
+            TelegramL10n.format("Telegram.Message.Field.Title", "Need direction"),
+            TelegramL10n.format("Telegram.Message.Field.Question", "Pick a path"),
+            TelegramL10n.format("Telegram.Message.Field.Details", "Choose one option"),
+            TelegramL10n.format("Telegram.Message.Field.CWD", "/tmp/ping-island"),
+            TelegramL10n.format("Telegram.Message.Field.Session", "session-1")
+        ].joined(separator: "\n"))
         XCTAssertNil(rendered.replyMarkup)
         XCTAssertTrue(rendered.callbackResolutions.isEmpty)
     }
@@ -149,7 +158,8 @@ final class TelegramMessageRendererTests: XCTestCase {
     func testRenderSecretQuestionRoutesBackToMac() {
         let rendered = renderQuestionFallback(makeQuestionIntervention(isSecret: true))
 
-        XCTAssertEqual(rendered.text, TelegramL10n.string("Telegram.Message.QuestionFallback.Secret"))
+        XCTAssertTrue(rendered.text.hasPrefix(TelegramL10n.string("Telegram.Message.QuestionFallback.Secret")))
+        XCTAssertTrue(rendered.text.contains(TelegramL10n.format("Telegram.Message.Field.Question", "Pick a path")))
         XCTAssertNil(rendered.replyMarkup)
         XCTAssertTrue(rendered.callbackResolutions.isEmpty)
     }
@@ -157,7 +167,8 @@ final class TelegramMessageRendererTests: XCTestCase {
     func testRenderMultiSelectQuestionRoutesBackToMac() {
         let rendered = renderQuestionFallback(makeQuestionIntervention(allowsMultiple: true))
 
-        XCTAssertEqual(rendered.text, TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleChoice"))
+        XCTAssertTrue(rendered.text.hasPrefix(TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleChoice")))
+        XCTAssertTrue(rendered.text.contains(TelegramL10n.format("Telegram.Message.Field.Question", "Pick a path")))
         XCTAssertNil(rendered.replyMarkup)
         XCTAssertTrue(rendered.callbackResolutions.isEmpty)
     }
@@ -189,9 +200,23 @@ final class TelegramMessageRendererTests: XCTestCase {
 
         let rendered = renderQuestionFallback(intervention)
 
-        XCTAssertEqual(rendered.text, TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleQuestions"))
+        XCTAssertTrue(rendered.text.hasPrefix(TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleQuestions")))
+        XCTAssertTrue(rendered.text.contains(TelegramL10n.format("Telegram.Message.Field.Question", "Pick a path")))
+        XCTAssertTrue(rendered.text.contains(TelegramL10n.format("Telegram.Message.Field.Question", "Pick again")))
         XCTAssertNil(rendered.replyMarkup)
         XCTAssertTrue(rendered.callbackResolutions.isEmpty)
+    }
+
+    func testSimplifiedChineseTelegramApprovalCopiesMacApprovalLanguage() throws {
+        let zhHans = try localizationFileContents(named: "zh-Hans")
+
+        XCTAssertTrue(zhHans.contains("\"Telegram.Button.AllowOnce\" = \"允许一次\";"))
+        XCTAssertTrue(zhHans.contains("\"Telegram.Button.Deny\" = \"拒绝\";"))
+        XCTAssertTrue(zhHans.contains("\"Telegram.Button.AllowSession\" = \"允许本次会话\";"))
+        XCTAssertTrue(zhHans.contains("\"Telegram.Message.Decision.ApprovedOnce\" = \"已允许一次\";"))
+        XCTAssertTrue(zhHans.contains("\"Telegram.Message.Decision.ApprovedForSession\" = \"已允许本次会话\";"))
+        XCTAssertTrue(zhHans.contains("\"Telegram.Message.Decision.Denied\" = \"已拒绝\";"))
+        XCTAssertTrue(zhHans.contains("\"Telegram.Message.ApprovalRequestedBy\" = \"%@ 请求批准\";"))
     }
 
     private func makeSession(
@@ -263,6 +288,17 @@ final class TelegramMessageRendererTests: XCTestCase {
             supportsSessionScope: false,
             metadata: [:]
         )
+    }
+
+    private func localizationFileContents(named localeCode: String) throws -> String {
+        let testsDirectory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        let repoRoot = testsDirectory.deletingLastPathComponent()
+        let fileURL = repoRoot
+            .appendingPathComponent("PingIsland")
+            .appendingPathComponent("Resources")
+            .appendingPathComponent("\(localeCode).lproj")
+            .appendingPathComponent("Localizable.strings")
+        return try String(contentsOf: fileURL, encoding: .utf8)
     }
 }
 

@@ -155,7 +155,7 @@ enum TelegramMessageRenderer {
             ?? intervention?.message
 
         var lines = [
-            TelegramL10n.string("Telegram.Message.ApprovalRequested"),
+            TelegramL10n.format("Telegram.Message.ApprovalRequestedBy", session.messageBadgeDisplayName),
             TelegramL10n.format("Telegram.Message.Field.Agent", session.messageBadgeDisplayName),
             TelegramL10n.format("Telegram.Message.Field.Project", session.projectName),
             TelegramL10n.format("Telegram.Message.Field.Tool", toolName),
@@ -200,7 +200,7 @@ enum TelegramMessageRenderer {
               let question = questions.first
         else {
             return TelegramRenderedMessage(
-                text: TelegramText.truncate(questionFallbackText(for: intervention), limit: 4096),
+                text: TelegramText.truncate(questionFallbackText(session: session, intervention: intervention), limit: 4096),
                 replyMarkup: nil,
                 callbackResolutions: [:]
             )
@@ -255,21 +255,72 @@ enum TelegramMessageRenderer {
         return lines.joined(separator: "\n")
     }
 
-    private static func questionFallbackText(for intervention: SessionIntervention) -> String {
+    private static func questionFallbackText(session: SessionState, intervention: SessionIntervention) -> String {
         let questions = intervention.resolvedQuestions
         guard questions.count == 1, let question = questions.first else {
-            return TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleQuestions")
+            return questionFallbackContext(
+                notice: TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleQuestions"),
+                session: session,
+                intervention: intervention,
+                questions: questions
+            )
         }
 
         if question.isSecret {
-            return TelegramL10n.string("Telegram.Message.QuestionFallback.Secret")
+            return questionFallbackContext(
+                notice: TelegramL10n.string("Telegram.Message.QuestionFallback.Secret"),
+                session: session,
+                intervention: intervention,
+                questions: questions
+            )
         }
 
         if question.allowsMultiple {
-            return TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleChoice")
+            return questionFallbackContext(
+                notice: TelegramL10n.string("Telegram.Message.QuestionFallback.MultipleChoice"),
+                session: session,
+                intervention: intervention,
+                questions: questions
+            )
         }
 
-        return TelegramL10n.string("Telegram.Message.QuestionFallback.FreeText")
+        return questionFallbackContext(
+            notice: TelegramL10n.string("Telegram.Message.QuestionFallback.FreeText"),
+            session: session,
+            intervention: intervention,
+            questions: questions
+        )
+    }
+
+    private static func questionFallbackContext(
+        notice: String,
+        session: SessionState,
+        intervention: SessionIntervention,
+        questions: [SessionInterventionQuestion]
+    ) -> String {
+        var lines = [
+            notice,
+            TelegramL10n.format("Telegram.Message.Field.Agent", session.messageBadgeDisplayName),
+            TelegramL10n.format("Telegram.Message.Field.Project", session.projectName),
+            TelegramL10n.format("Telegram.Message.Field.Title", intervention.title)
+        ]
+
+        for question in questions {
+            lines.append(TelegramL10n.format("Telegram.Message.Field.Question", question.prompt))
+            if let detail = question.detail,
+               !detail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                lines.append(TelegramL10n.format("Telegram.Message.Field.Details", detail))
+            }
+        }
+
+        if questions.isEmpty,
+           !intervention.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines.append(TelegramL10n.format("Telegram.Message.Field.Details", intervention.message))
+        }
+
+        lines.append(TelegramL10n.format("Telegram.Message.Field.CWD", session.cwd))
+        lines.append(TelegramL10n.format("Telegram.Message.Field.Session", session.sessionId))
+        return lines.joined(separator: "\n")
     }
 
     private static func renderStatus(text: String) -> TelegramRenderedMessage {
